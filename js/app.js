@@ -1,0 +1,622 @@
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.1.0 (ช่วง A ของขั้น Build)
+// หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี, ประวัติ (ยอดเงิน + ยอดสิ้นปี),
+// ข้อมูลและสำรอง (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
+(function () {
+'use strict';
+const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
+const { thaiDate, thaiDateShort, todayIso, moneyInput, MONTHS } = Forms;
+const VERSION = '0.1.0';
+const app = document.getElementById('app');
+
+let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
+let loadError = null;      // อ่านข้อมูลเดิมไม่ได้ → ห้ามเขียนทับเอง
+let draft = null;          // ค่าที่กำลังกรอกในฟอร์ม (เก็บไว้เมื่อต้องแสดงข้อผิดพลาด)
+let pendingRestore = null; // ไฟล์สำรองที่ตรวจแล้ว รอผู้ใช้ยืนยัน
+let chartRange = 'year';
+
+// ---------- เครื่องมือเล็ก ๆ ----------
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => todayIso();
+const nowStamp = () => new Date().toISOString();
+const daysBetween = (aIso, bIso) => dayNum(bIso.slice(0, 10)) - dayNum(aIso.slice(0, 10));
+const be = y => y + 543;
+const go = h => { if (location.hash === h) render(); else location.hash = h; };
+
+const triUp = c => `<svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true"><polygon points="6,0 12,10 0,10" fill="${c}"></polygon></svg>`;
+const triDown = c => `<svg width="12" height="10" viewBox="0 0 12 10" aria-hidden="true"><polygon points="0,0 12,0 6,10" fill="${c}"></polygon></svg>`;
+// ขึ้น/ลง บอก 3 ทาง: สามเหลี่ยม + เครื่องหมาย + สี (UX 5.8) — ศูนย์ไม่มีสามเหลี่ยม
+const signed = (s, txt) => s > 0 ? `<span class="up num">${triUp('#1F7A4D')} ${txt}</span>` : s < 0 ? `<span class="down-t num">${triDown('#B2413A')} ${txt}</span>` : `<span class="num">${txt}</span>`;
+
+const LOGO = (w = 42, h = 44, label = true) => `<svg width="${w}" height="${h}" viewBox="0 0 42 44" ${label ? 'role="img" aria-label="โลโก้สมุดเกษียณสุข"' : 'aria-hidden="true"'}>
+  <rect x="6" y="4" width="28" height="36" rx="6" fill="#CFE9DC"></rect><rect x="10" y="4" width="3" height="36" fill="#B2DCC7"></rect>
+  <circle cx="24" cy="18" r="6" fill="#FFC9AE"></circle><ellipse cx="22" cy="31" rx="7" ry="3.5" fill="#8FCFB1" transform="rotate(-20 22 31)"></ellipse></svg>`;
+const SUN = `<svg width="70" height="56" viewBox="0 0 70 56" aria-hidden="true"><circle cx="44" cy="22" r="17" fill="#FFD9C4"></circle>
+  <ellipse cx="18" cy="40" rx="15" ry="7.5" fill="#BFE8D4" transform="rotate(-24 18 40)"></ellipse><ellipse cx="35" cy="46" rx="12" ry="6" fill="#A6DDC3" transform="rotate(18 35 46)"></ellipse></svg>`;
+const BACK_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>';
+
+const IMPORTANT_3 = ['ไม่ใช่คำแนะนำการลงทุน', 'ไม่ใช่บริการทางการของ กบข.', 'ข้อมูลอยู่ในเครื่องคุณเท่านั้น ไม่ส่งออกไปที่ใด'];
+const IMPORTANT_MORE = ['ตัวเลขทั้งหมดคุณกรอกเองจาก My GPF ของ กบข.', 'ผลคำนวณใช้ประกอบการตัดสินใจเท่านั้น'];
+
+// ---------- เก็บข้อมูล ----------
+function persist(next, okMsg) {
+  const res = Store.save(localStorage, next);
+  if (!res.ok) { showAlert(res.why + ' — ข้อมูลยังไม่ถูกบันทึก ลองอีกครั้ง'); return false; }
+  state = next;
+  if (okMsg) toast(okMsg);
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ไม่เป็นไร */ }
+  return true;
+}
+const clone = o => JSON.parse(JSON.stringify(o));
+function changed(st) { st.meta.changesSinceBackup = (st.meta.changesSinceBackup || 0) + 1; return st; }
+
+// ---------- ข้อความชั่วคราว / แผ่นเลื่อนขึ้น ----------
+function toast(msg) {
+  document.querySelectorAll('.toast').forEach(x => x.remove());   // ทีละข้อความ ไม่ซ้อนกัน
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
+}
+function showAlert(msg) {
+  const box = document.getElementById('form-alert');
+  if (box) { box.hidden = false; box.textContent = msg; box.focus(); } else toast(msg);
+}
+function openSheet(html, onReady) {
+  closeSheet();
+  const wrap = document.createElement('div'); wrap.className = 'sheet-wrap'; wrap.id = 'sheet';
+  wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" tabindex="-1">${html}</div>`;
+  wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-close]')) closeSheet(); });
+  wrap.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+  document.body.appendChild(wrap);
+  const sh = wrap.querySelector('.sheet'); sh.focus();
+  if (onReady) onReady(sh);
+}
+function closeSheet() { const s = document.getElementById('sheet'); if (s) s.remove(); }
+
+// คำช่วยหาข้อมูล (F-07) — ข้อความเส้นทาง ไม่ใช้ภาพหน้าจอ My GPF
+const HELP = {
+  balance: `<h2>ดูได้จากไหนใน My GPF</h2>
+    <ol><li>เปิดแอพ My GPF แตะ <b>My Account</b> (เมนูด้านล่าง)</li>
+    <li>แตะ <b>ยอดเงิน กบข.</b> (ด้านบน)</li>
+    <li><b>วันที่ข้อมูล</b> อยู่ตรง "ยอดเงิน ณ วันที่ ..."</li>
+    <li><b>ยอดเงิน</b> คือตัวเลข "รวมเงินทั้งสิ้น"</li>
+    <li>เลื่อนลงจะเห็น 2 กล่อง <b>"${BOX.pm}"</b> และ <b>"${BOX.pg}"</b> แต่ละกล่องมีบรรทัด "เงินต้น" และ "ผลประโยชน์" — กรอกเฉพาะบรรทัด <b>เงินต้น</b> ของแต่ละกล่อง</li></ol>`,
+  yearend: `<h2>ยอดสิ้นปีดูได้จากไหน</h2>
+    <ol><li>My GPF → <b>My Account</b> → <b>ยอดเงิน กบข.</b></li>
+    <li>เลื่อนลง แตะ <b>ดูยอดเงินย้อนหลังรายปี</b> แล้วเลือกปี</li>
+    <li>กรอกวันที่ ยอดเงิน และเงินต้นของ 2 กล่องตามที่แสดง</li></ol>
+    <p class="small muted" style="margin:0">หรือใช้ใบแจ้งยอดสิ้นปีจาก กบข. ก็ได้</p>`,
+  pct: `<h2>% ของแอพต่างจาก My GPF อย่างไร</h2>
+    <p style="margin:0">ของแอพ = ผลตอบแทนตั้งแต่ 1 ม.ค. ถึงวันที่ข้อมูล</p>
+    <p style="margin:0">ของ My GPF = อัตราเฉลี่ยต่อปีหลายปี อัปเดตสัปดาห์ละครั้ง ตัวเลขจึงไม่เท่ากัน</p>
+    <p style="margin:0">แอพไม่รู้วันที่เงินเข้าแน่นอน จึงถือว่าเงินเข้าปลายเดือน ตัวเลขจึงเป็นค่าประมาณ</p>`,
+};
+const helpNote = '<p class="xsmall muted" style="margin:0">ชื่อเมนูอาจเปลี่ยนเมื่อ My GPF อัปเดต</p><button type="button" class="btn btn-soft" data-close>ปิด</button>';
+function openHelp(key) { openSheet(HELP[key] + (key === 'pct' ? '<button type="button" class="btn btn-soft" data-close>ปิด</button>' : helpNote)); }
+
+// ---------- ส่วนประกอบของฟอร์ม ----------
+function dateFields(id, iso, err, legend, hint) {
+  const [y, m, d] = (iso || today()).split('-').map(Number);
+  const nowY = new Date().getFullYear();
+  let days = '', months = '', years = '';
+  for (let i = 1; i <= 31; i++) days += `<option value="${i}"${i === d ? ' selected' : ''}>${i}</option>`;
+  MONTHS.forEach((t, i) => { months += `<option value="${i + 1}"${i + 1 === m ? ' selected' : ''}>${t}</option>`; });
+  for (let yy = nowY; yy >= 1997; yy--) years += `<option value="${be(yy)}"${yy === y ? ' selected' : ''}>${be(yy)}</option>`;
+  const inv = err ? ' aria-invalid="true"' : '';
+  return `<fieldset class="field"><legend>${legend}</legend>
+    <div class="date3">
+      <select id="${id}-d" name="d" aria-label="วัน"${inv}>${days}</select>
+      <select id="${id}-m" name="m" aria-label="เดือน"${inv}>${months}</select>
+      <select id="${id}-y" name="y" aria-label="ปี พ.ศ."${inv}>${years}</select>
+    </div>${hint ? `<span class="hint">${hint}</span>` : ''}${err ? `<span class="err" id="${id}-err">${esc(err)}</span>` : ''}</fieldset>`;
+}
+function moneyField(name, label, value, err, hint, opt) {
+  return `<div class="field"><label for="f-${name}">${label}${opt ? ` <span class="opt">${opt}</span>` : ''}</label>
+    <input type="text" id="f-${name}" name="${name}" inputmode="decimal" autocomplete="off" value="${esc(value)}"${err ? ' aria-invalid="true" aria-describedby="e-' + name + '"' : ''}>
+    ${hint ? `<span class="hint">${hint}</span>` : ''}${err ? `<span class="err" id="e-${name}">${esc(err)}</span>` : ''}</div>`;
+}
+const readForm = form => Object.fromEntries(new FormData(form).entries());
+const isoFromDraft = dr => (dr && dr.y ? `${+dr.y - 543}-${String(dr.m).padStart(2, '0')}-${String(dr.d).padStart(2, '0')}` : null);
+function focusFirstError() { const el = app.querySelector('[aria-invalid="true"], .err, .warn-box'); if (el) { el.scrollIntoView({ block: 'center' }); if (el.focus) el.focus(); } }
+
+// ---------- แถบล่าง ----------
+function tabbar(cur) {
+  const item = (k, href, icon, label) => `<a href="${href}"${cur === k ? ' aria-current="page"' : ''}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>${label}</a>`;
+  return `<nav class="tabbar" aria-label="เมนูหลัก"><div class="tabbar-in">
+    ${item('home', '#/home', '<path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path>', 'หน้าหลัก')}
+    ${item('record', '#/record', '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path>', 'บันทึก')}
+    ${item('history', '#/history', '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>', 'ประวัติ')}
+    ${item('data', '#/data', '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path>', 'ข้อมูลและสำรอง')}
+  </div></nav>`;
+}
+function pageHead(title, back, backLabel, sub, notebook) {
+  return `<header class="page-head">${back ? `<a class="back" href="${back}">${BACK_ICON}${backLabel}</a>` : ''}
+    <div class="brand">${notebook ? LOGO(34, 36, false) : ''}<h1>${title}</h1></div>${sub ? `<span class="small muted">${sub}</span>` : ''}</header>`;
+}
+function view(html, tab) {
+  closeSheet();
+  app.innerHTML = html + (tab ? tabbar(tab) : '');
+  app.classList.toggle('has-nav', !!tab);
+  document.body.classList.toggle('has-nav', !!tab);
+  window.scrollTo(0, 0);
+}
+
+// =====================================================================
+// เริ่มใช้ (F-01, AC-01, AC-03, AC-24)
+// =====================================================================
+function renderStart(errors = {}) {
+  const dr = draft || {};
+  view(`<header class="app-head"><div class="brand">${LOGO()}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
+  <main>
+    <section class="card">
+      <h1 class="card-title" style="font-size:22px">ยินดีต้อนรับ</h1>
+      <p style="margin:0">บอกกำไรปีนี้ของ กบข. แยกจากเงินที่ส่งเข้าไป</p>
+      <div class="important"><b>ข้อความสำคัญ</b><ul>${IMPORTANT_3.map(t => `<li>${t}</li>`).join('')}</ul></div>
+    </section>
+    <section class="card">
+      <h2 class="card-title">บันทึกยอดครั้งแรก</h2>
+      <button type="button" class="link-btn" data-help="balance">ดูได้จากไหนใน My GPF</button>
+      <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+      <form id="start-form" novalidate>
+        ${dateFields('date', isoFromDraft(dr) || today(), errors.date, 'วันที่ข้อมูลจาก กบข.', 'ใช้วันที่ตรง "ยอดเงิน ณ วันที่" ไม่ใช่วันที่กรอก')}
+        ${moneyField('v', 'ยอดเงิน (บาท)', dr.v || '', errors.v, 'ตัวเลข "รวมเงินทั้งสิ้น"')}
+        ${moneyField('pm', `${BOX.pm} · เงินต้น`, dr.pm || '', errors.pm, 'กรอกเฉพาะบรรทัดเงินต้น ไม่ใช่ผลประโยชน์', 'ข้ามได้')}
+        ${moneyField('pg', `${BOX.pg} · เงินต้น`, dr.pg || '', errors.pg, null, 'ข้ามได้')}
+        <p class="hint" style="margin:0">เงินต้นกรอกครบทั้ง 2 ช่อง หรือเว้นทั้ง 2 ช่องไว้เติมทีหลังก็ได้</p>
+        <button type="submit" class="btn btn-primary">บันทึกและไปหน้าหลัก</button>
+      </form>
+    </section>
+    <p class="small" style="text-align:center;margin:0">มีไฟล์สำรองอยู่แล้ว? <a href="#/data">กู้คืนจากไฟล์สำรอง</a></p>
+  </main>`, null);
+  bindHelp();
+  app.querySelector('#start-form').addEventListener('submit', e => {
+    e.preventDefault();
+    draft = readForm(e.target);
+    // ใช้ข้อมูลเดิมถ้ามี (เช่น มียอดสิ้นปีแล้วแต่ลบยอดเงินหมด) ไม่เริ่มใหม่ทับ
+    const next = state ? clone(state) : Store.emptyState(nowStamp());
+    const r = Forms.checkBalance(next, draft, { today: today() });
+    if (Object.keys(r.errors).length) { renderStart(r.errors); focusFirstError(); return; }
+    next.records.push(r.rec); changed(next);
+    if (persist(next, 'บันทึกแล้ว')) { draft = null; go('#/home'); }
+  });
+}
+
+// =====================================================================
+// หน้าหลัก (F-04, F-09, F-10, AC-05, AC-09, AC-11–15, AC-26)
+// =====================================================================
+function backupBannerNeeded() {
+  if (!state || !state.records.length) return false;
+  const m = state.meta, now = nowStamp();
+  const sinceChanges = (m.changesSinceBackup || 0) - (m.bannerDismissedChanges || 0);
+  const ref = [m.lastBackupAt || m.createdAt, m.bannerDismissedAt].filter(Boolean).sort().pop();
+  return sinceChanges >= 3 || (ref && daysBetween(ref, now) >= 30);
+}
+
+function renderHome() {
+  const r = compute(state);
+  const L = r.latest, yf = r.year, Y = yf.Y;
+  const curY = new Date().getFullYear();
+  const yw = Y === curY ? 'ปีนี้' : `ปี ${be(Y)}`;
+  const hasBase = state.yearEnds.some(e => e.year === Y - 1);
+  const steps = [];
+  if (!hasBase) steps.push(`<li><a href="#/record/yearend?y=${Y - 1}"><span class="dot" aria-hidden="true"></span>เติมยอดสิ้นปี ${be(Y - 1)}</a></li>`);
+  if (L.pm == null) steps.push(`<li><a href="#/record/balance/${L.date}"><span class="dot" aria-hidden="true"></span>เติมเงินต้นของยอดล่าสุด (${thaiDate(L.date)})</a></li>`);
+
+  // ยอดเปลี่ยนจากครั้งก่อน
+  let change;
+  if (!r.dV) change = `<div class="change"><span>ยอดเปลี่ยนจากครั้งก่อน</span><span class="muted">ยังไม่มีครั้งก่อนให้เทียบ</span></div>`;
+  else {
+    const a = r.dV.amount;
+    change = `<div class="change ${a > 0 ? 'is-up' : a < 0 ? 'is-down' : ''}"><span>ยอดเปลี่ยนจากครั้งก่อน</span><b>${signed(a, fmtSigned(a) + ' บาท')}</b></div>
+      <span class="xsmall muted" style="padding-left:4px">${r.dV.yearEnd ? `เทียบยอดสิ้นปี ${be(r.dV.yearEnd)}` : `เทียบกับ ${thaiDate(r.dV.vs)}`}</span>`;
+  }
+
+  // การ์ดปีนี้
+  let yearCard;
+  if (!yf.ok) {
+    const fix = yf.why === 'ยังไม่มีเงินต้นของยอดล่าสุด'
+      ? `<a class="btn btn-soft" href="#/record/balance/${L.date}">เติมเงินต้นของยอดล่าสุด</a>`
+      : `<a class="btn btn-soft" href="#/record/yearend?y=${Y - 1}">เติมยอดสิ้นปี ${be(Y - 1)}</a>`;
+    yearCard = `<div class="empty-why"><span>ยังแสดงไม่ได้: ${esc(yf.why)}</span>${fix}</div>`;
+  } else {
+    const p = yf.profit, loss = p < 0;
+    const note = r.principalNote;
+    const pctTile = yf.pct != null
+      ? `<span class="tile-value">${signed(Math.round(yf.pct * 100), fmtPct(yf.pct))}</span><span class="tile-sub">ประมาณ</span>`
+      : `<span class="tile-why">${esc(yf.pctWhy)}</span>`;
+    const pctDown = yf.pct != null && fmtPct(yf.pct).startsWith('−');
+    const diff = L.v - yf.base.v;
+    yearCard = `
+      <div class="tiles">
+        <div class="tile${loss ? ' down' : ''}"><span class="tile-label">${loss ? 'ขาดทุน' : 'กำไร'}${yw}</span>
+          <span class="tile-value">${signed(p, fmtMoney(p))}</span><span class="tile-sub">บาท${note ? ' · <span class="tag tag-warn">อาจสูงเกินจริง</span>' : ''}</span></div>
+        <div class="tile${pctDown ? ' down' : ''}"><span class="tile-label">ผลตอบแทน${yw}</span>${pctTile}</div>
+      </div>
+      ${note ? `<a class="note-line" href="#/record/balance/${L.date}">เงินต้นอาจยังไม่รวมเงินนำส่งรอบล่าสุด (ไม่เปลี่ยนตั้งแต่ ${thaiDate(note.sameSince)}) — แตะเพื่อแก้เงินต้น</a>` : ''}
+      <button type="button" class="link-btn" data-help="pct">ต่างจาก My GPF อย่างไร</button>
+      <div class="split">
+        <div class="row"><span>เงินที่ส่งเข้าไป${yw}</span><b class="num">${fmtMoney(yf.contributed.total)} บาท</b></div>
+        <div class="row sub"><span>${BOX.pm}</span><span class="num">${fmtMoney(yf.contributed.m)} บาท</span></div>
+        <div class="row sub"><span>${BOX.pg}</span><span class="num">${fmtMoney(yf.contributed.g)} บาท</span></div>
+      </div>
+      <p class="explain">ยอดเงิน${diff < 0 ? 'ลดลง' : 'เพิ่ม'}จากสิ้นปี ${be(Y - 1)} <span class="num">${fmtMoney(Math.abs(diff))}</span> บาท = เงินที่ส่งเข้าไป <span class="num">${fmtMoney(yf.contributed.total)}</span> + ${loss ? 'ขาดทุน' : 'กำไร'} <span class="num">${fmtMoney(p)}</span></p>
+      ${r.principalSince ? `<span class="xsmall muted">เงินต้นอัปเดตล่าสุด ${thaiDate(r.principalSince)}</span>` : ''}`;
+  }
+
+  view(`<header class="app-head"><div class="brand">${LOGO()}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
+  <main>
+    ${backupBannerNeeded() ? `<div class="banner" role="note"><p>สำรองข้อมูลไว้กันหาย <a href="#/data">ไปสำรอง</a></p><button type="button" class="icon-btn" id="hide-banner" aria-label="ปิดแถบชวนสำรอง">✕</button></div>` : ''}
+    <section class="card" style="gap:4px">
+      <span class="card-kicker">วันนี้ในสมุด</span>
+      <span class="small muted">ยอดเงิน</span>
+      <div class="big-money num">${fmtMoney(L.v)}<span class="unit">บาท</span></div>
+      <span class="small muted">ข้อมูลวันที่ ${thaiDate(L.date)}</span>
+      <div style="margin-top:10px">${change}</div>
+    </section>
+    ${steps.length ? `<section class="card"><h2 class="card-title">อีก ${steps.length} ขั้นเพื่อดูกำไร${yw}</h2><ul class="checklist">${steps.join('')}</ul></section>` : ''}
+    <section class="card" style="gap:14px">
+      <div class="row"><h2 class="card-title">${yw}</h2><span class="xsmall muted">คำนวณถึง ${thaiDate(L.date)}</span></div>
+      ${yearCard}
+    </section>
+    ${chartCard(r, Y)}
+    <p class="footer-note">ไม่ใช่คำแนะนำการลงทุน · ไม่ใช่บริการทางการของ กบข.</p>
+  </main>`, 'home');
+  bindHelp();
+  const hb = app.querySelector('#hide-banner');
+  if (hb) hb.addEventListener('click', () => {
+    const next = clone(state); next.meta.bannerDismissedAt = nowStamp(); next.meta.bannerDismissedChanges = next.meta.changesSinceBackup || 0;
+    if (persist(next)) renderHome();
+  });
+  app.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => { chartRange = b.dataset.range; renderHome(); }));
+}
+
+// กราฟยอดเงินกับเงินต้น (F-10): 2 เส้น จุดเฉพาะวันที่บันทึกจริง + ยอดสิ้นปี; ช่องว่าง = ผลประโยชน์
+function chartCard(r, Y) {
+  const all = r.graph;
+  if (all.length < 2) return '';
+  const base = state.yearEnds.find(e => e.year === Y - 1);
+  const yearPts = all.filter(p => base ? p.date >= base.date : +p.date.slice(0, 4) === Y);
+  const pts = chartRange === 'year' ? yearPts : all;
+  const toggle = `<div class="seg" role="group" aria-label="ช่วงของกราฟ">
+      <button type="button" data-range="year" aria-pressed="${chartRange === 'year'}">ปีนี้</button>
+      <button type="button" data-range="all" aria-pressed="${chartRange === 'all'}">ทั้งหมด</button></div>`;
+  const body = pts.length < 2
+    ? `<p class="small muted" style="margin:0">ช่วงนี้ยังมีจุดไม่ถึง 2 จุด ลองดู "ทั้งหมด"</p>`
+    : chartSvg(pts);
+  return `<section class="card chart">
+    <div class="row" style="align-items:center"><h2 class="card-title" style="font-size:16px">เงินที่ค่อย ๆ โต</h2>${toggle}</div>
+    ${body}
+    <div class="legend"><span><span style="width:18px;height:3px;background:#2E7D63;border-radius:2px"></span>ยอดเงิน</span>
+      <span><span style="width:18px;height:0;border-top:3px dashed #E39A78"></span>เงินต้น</span></div>
+    <span class="xsmall muted">ช่องว่างระหว่างเส้น = ผลประโยชน์</span></section>`;
+}
+function chartSvg(pts) {
+  const W = 320, H = 170, L = 12, R = 12, T = 12, B = 30;
+  const xs = pts.map(p => dayNum(p.date)); const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const vals = []; pts.forEach(p => { vals.push(p.v); if (p.p != null) vals.push(p.p); });
+  let lo = Math.min(...vals), hi = Math.max(...vals); const padY = (hi - lo) * 0.08 || Math.max(hi * 0.05, 100); lo -= padY; hi += padY;
+  const X = d => L + (x1 === x0 ? (W - L - R) / 2 : (dayNum(d) - x0) / (x1 - x0) * (W - L - R));
+  const Yp = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const f = n => n.toFixed(1);
+  const vLine = pts.map(p => `${f(X(p.date))},${f(Yp(p.v))}`);
+  const pp = pts.filter(p => p.p != null);
+  const pLine = pp.map(p => `${f(X(p.date))},${f(Yp(p.p))}`);
+  const fill = pp.length >= 2 ? `<polygon points="${pp.map(p => `${f(X(p.date))},${f(Yp(p.v))}`).concat(pLine.slice().reverse()).join(' ')}" fill="#FFE9DD"></polygon>` : '';
+  const dots = (arr, key, col) => arr.map((p, i) => `<circle cx="${f(X(p.date))}" cy="${f(Yp(p[key]))}" r="${i === arr.length - 1 ? 5 : 4}" fill="${col}"></circle>`).join('');
+  const first = pts[0], last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="กราฟยอดเงินและเงินต้น ${pts.length} จุด ตั้งแต่ ${thaiDate(first.date)} ถึง ${thaiDate(last.date)} ยอดเงินล่าสุด ${fmtMoney(last.v)} บาท">
+    ${fill}
+    <polyline points="${vLine.join(' ')}" fill="none" stroke="#2E7D63" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    ${pLine.length >= 2 ? `<polyline points="${pLine.join(' ')}" fill="none" stroke="#E39A78" stroke-width="3" stroke-dasharray="6 5" stroke-linecap="round"></polyline>` : ''}
+    ${dots(pts, 'v', '#2E7D63')}${dots(pp, 'p', '#E39A78')}
+    <text x="${L}" y="${H - 8}" font-size="11" fill="#54706A">${thaiDateShort(first.date)}</text>
+    <text x="${W - R}" y="${H - 8}" font-size="11" fill="#54706A" text-anchor="end">${thaiDateShort(last.date)}</text>
+  </svg>`;
+}
+
+// =====================================================================
+// เมนูบันทึก (F-16) — ช่วง A มี 2 อย่าง; สมุด 3 อย่างเพิ่มในช่วง B
+// =====================================================================
+function renderRecordMenu() {
+  view(`${pageHead('บันทึก')}
+  <main><div class="menu-list">
+    <a class="menu-item main" href="#/record/balance"><span><span class="t" style="font-size:18px">บันทึกยอดใหม่</span><span class="d">จากหน้ายอดเงิน กบข. ใน My GPF</span></span></a>
+    <a class="menu-item" href="#/record/yearend"><span><span class="t">ยอดสิ้นปี</span><span class="d muted">จาก "ดูยอดเงินย้อนหลังรายปี"</span></span></a>
+  </div>
+  <p class="small muted" style="margin:0">เร็ว ๆ นี้: จดเงินนำส่ง เปลี่ยนแผน และออมเพิ่ม (ไม่บังคับ จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร)</p>
+  </main>`, 'record');
+}
+
+// =====================================================================
+// บันทึกยอดใหม่ / แก้รายการ (F-02, F-09, AC-02, AC-04, AC-06, AC-07, AC-16)
+// =====================================================================
+function renderBalance(editDate, errors = {}, extra = {}) {
+  const editing = editDate ? state.records.find(r => r.date === editDate) : null;
+  if (editDate && !editing) return go('#/history');
+  let dr = draft;
+  let prefillFrom = null;
+  if (!dr) {
+    if (editing) dr = { v: moneyInput(editing.v), pm: moneyInput(editing.pm), pg: moneyInput(editing.pg), note: editing.note || '' };
+    else {
+      const withP = byDate(state.records).filter(r => r.pm != null); const last = withP[withP.length - 1];
+      dr = { v: '', pm: last ? moneyInput(last.pm) : '', pg: last ? moneyInput(last.pg) : '', note: '' };
+      if (last) prefillFrom = last.date;
+    }
+  } else prefillFrom = dr._prefill || null;
+  const dateIso = isoFromDraft(dr) || (editing ? editing.date : today());
+  const title = editing ? `แก้ยอดวันที่ ${thaiDate(editing.date)}` : 'บันทึกยอดใหม่';
+  const back = editing ? `#/history/b/${editing.date}` : '#/record';
+  view(`${pageHead(title, back, editing ? 'รายละเอียด' : 'บันทึก')}
+  <main><section class="card">
+    <button type="button" class="link-btn" data-help="balance">ดูได้จากไหนใน My GPF</button>
+    <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+    <form id="bal-form" novalidate>
+      ${dateFields('date', dateIso, errors.date, 'วันที่ข้อมูล', 'ใช้วันที่ตรง "ยอดเงิน ณ วันที่" ไม่ใช่วันที่กรอก')}
+      ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/balance/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
+      ${moneyField('v', 'ยอดเงิน (บาท)', dr.v, errors.v, 'ตัวเลข "รวมเงินทั้งสิ้น"')}
+      ${prefillFrom ? `<p class="prefill" style="margin:0">เติมเงินต้นจาก ${thaiDate(prefillFrom)} ไว้ให้ ถ้าใน My GPF เปลี่ยนแล้ว แก้ตรงนี้</p>` : ''}
+      ${moneyField('pm', `${BOX.pm} · เงินต้น`, dr.pm, errors.pm, 'กรอกเฉพาะบรรทัดเงินต้น ไม่ใช่ผลประโยชน์')}
+      ${moneyField('pg', `${BOX.pg} · เงินต้น`, dr.pg, errors.pg)}
+      ${extra.drop ? `<div class="warn-box" role="alert" tabindex="-1"><p>เงินต้นรวม ${fmtMoney(extra.drop.now)} บาท น้อยกว่าครั้งก่อน (${thaiDate(extra.drop.vs)}: ${fmtMoney(extra.drop.prev)} บาท) ตรวจกับ My GPF อีกครั้ง ถ้าถูกแล้วกดยืนยัน</p>
+         <button type="button" class="btn btn-primary" id="confirm-drop">ยืนยันบันทึก</button></div>` : ''}
+      <div class="field"><label for="f-note">บันทึกเพิ่มเติม <span class="opt">ไม่บังคับ</span></label>
+        <textarea id="f-note" name="note" rows="2" placeholder="เช่น เหตุผลที่บันทึก">${esc(dr.note)}</textarea></div>
+      <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'บันทึก'}</button>
+    </form></section></main>`, 'record');
+  bindHelp();
+  const form = app.querySelector('#bal-form');
+  const submit = (confirmDrop) => {
+    const f = readForm(form); f._prefill = prefillFrom; draft = f;
+    const r = Forms.checkBalance(state, f, { editing: editing ? editing.date : null, today: today() });
+    if (Object.keys(r.errors).length) { renderBalance(editDate, r.errors, { duplicateOf: r.duplicateOf }); focusFirstError(); return; }
+    if (r.principalDrop && !confirmDrop) { renderBalance(editDate, {}, { drop: r.principalDrop }); focusFirstError(); return; }
+    const q = Forms.principalQuestion(state, r.rec, editing ? editing.date : null);
+    if (q) return askPrincipal(q, () => saveBalance(r.rec, editing));
+    saveBalance(r.rec, editing);
+  };
+  form.addEventListener('submit', e => { e.preventDefault(); submit(false); });
+  const cd = app.querySelector('#confirm-drop'); if (cd) cd.addEventListener('click', () => submit(true));
+}
+// F-09: ถามตอนบันทึกยอดใหม่ เมื่อเงินต้นไม่ทันสมัย — ปุ่ม "แก้เงินต้น" / "ไว้ทีหลัง"
+function askPrincipal(q, later) {
+  openSheet(`<h2>เงินต้นเปลี่ยนแล้วหรือยัง</h2>
+    <p style="margin:0">เงินต้นไม่เปลี่ยนตั้งแต่ ${thaiDate(q.sameSince)} เงินนำส่งรอบล่าสุดน่าจะเข้าแล้ว</p>
+    <p class="small muted" style="margin:0">ถ้ายังไม่แก้ กำไรปีนี้อาจสูงเกินจริง</p>
+    <div class="btn-row"><button type="button" class="btn btn-primary" id="q-fix">แก้เงินต้น</button><button type="button" class="btn btn-soft" id="q-later">ไว้ทีหลัง</button></div>`, sh => {
+    sh.querySelector('#q-fix').addEventListener('click', () => { closeSheet(); const el = document.getElementById('f-pm'); if (el) { el.focus(); el.select(); } });
+    sh.querySelector('#q-later').addEventListener('click', () => { closeSheet(); later(); });
+  });
+}
+function saveBalance(rec, editing) {
+  const next = clone(state);
+  if (editing) next.records = next.records.filter(r => r.date !== editing.date);
+  next.records.push(rec); changed(next);
+  if (persist(next, editing ? 'แก้แล้ว ตัวเลขทุกจุดคำนวณใหม่แล้ว' : 'บันทึกแล้ว')) { draft = null; go(editing ? `#/history/b/${rec.date}` : '#/home'); }
+}
+
+// =====================================================================
+// ยอดสิ้นปี (F-03, AC-08, AC-10, C-2)
+// =====================================================================
+function renderYearEnd(editYear, errors = {}, extra = {}, defYear) {
+  const editing = editYear != null ? state.yearEnds.find(e => e.year === editYear) : null;
+  if (editYear != null && !editing) return go('#/history');
+  let dr = draft;
+  if (!dr) dr = editing ? { v: moneyInput(editing.v), pm: moneyInput(editing.pm), pg: moneyInput(editing.pg) } : { v: '', pm: '', pg: '' };
+  const y0 = defYear || (new Date().getFullYear() - 1);
+  const dateIso = isoFromDraft(dr) || (editing ? editing.date : `${y0}-12-31`);
+  const yearBE = be(+dateIso.slice(0, 4));
+  view(`${pageHead(editing ? `แก้ยอดสิ้นปี ${be(editing.year)}` : `ยอดสิ้นปี ${yearBE}`, editing ? `#/history/y/${editing.year}` : '#/record', editing ? 'รายละเอียด' : 'บันทึก')}
+  <main><section class="card">
+    <button type="button" class="link-btn" data-help="yearend">ยอดสิ้นปีดูได้จากไหน</button>
+    <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+    <form id="ye-form" novalidate>
+      ${dateFields('date', dateIso, errors.date, 'วันที่ (ตามที่ My GPF แสดง)', 'ปีของยอดสิ้นปีดูจากวันที่นี้')}
+      ${extra.duplicateOf != null ? `<a class="btn btn-soft" href="#/record/yearend/${extra.duplicateOf}">ไปแก้ยอดสิ้นปี ${be(extra.duplicateOf)}</a>` : ''}
+      ${moneyField('v', 'ยอดเงิน (บาท)', dr.v, errors.v)}
+      ${moneyField('pm', `${BOX.pm} · เงินต้น`, dr.pm, errors.pm)}
+      ${moneyField('pg', `${BOX.pg} · เงินต้น`, dr.pg, errors.pg)}
+      <p class="hint" style="margin:0">ปีที่แล้วยังไม่ได้เป็นสมาชิก กบข.? กรอก 0 ทุกช่อง</p>
+      ${extra.notDec ? `<div class="warn-box" role="alert" tabindex="-1"><p>ยอดสิ้นปีมักลงวันที่ปลาย ธ.ค. ตรวจวันที่อีกครั้ง ถ้าถูกแล้วกดยืนยัน</p><button type="button" class="btn btn-primary" id="confirm-ye">ยืนยันบันทึก</button></div>` : ''}
+      <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'บันทึก'}</button>
+    </form></section></main>`, 'record');
+  bindHelp();
+  const form = app.querySelector('#ye-form');
+  // เปลี่ยนวันที่แล้วหัวหน้าเปลี่ยนตามปี
+  form.querySelector('#date-y').addEventListener('change', e => { if (!editing) app.querySelector('.page-head h1').textContent = `ยอดสิ้นปี ${e.target.value}`; });
+  const submit = (okNotDec, okZero) => {
+    draft = readForm(form);
+    const r = Forms.checkYearEnd(state, draft, { editingYear: editing ? editing.year : null, today: today() });
+    if (Object.keys(r.errors).length) { renderYearEnd(editYear, r.errors, { duplicateOf: r.duplicateOf }, defYear); focusFirstError(); return; }
+    if (r.notDecember && !okNotDec) { renderYearEnd(editYear, {}, { notDec: true }, defYear); focusFirstError(); return; }
+    if (r.allZero && !okZero) {
+      return openSheet(`<h2>ปี ${be(r.ye.year)} ยังไม่ได้เป็นสมาชิก กบข. ใช่ไหม</h2>
+        <p style="margin:0">แอพจะแสดงกำไรและเงินที่ส่งเข้าไปปีนี้ แต่ยังคิด % ให้ไม่ได้ในปีแรก</p>
+        <div class="btn-row"><button type="button" class="btn btn-primary" id="z-yes">ใช่</button><button type="button" class="btn btn-soft" data-close>ไม่ใช่ แก้ตัวเลข</button></div>`,
+        sh => sh.querySelector('#z-yes').addEventListener('click', () => { closeSheet(); submit(true, true); }));
+    }
+    const next = clone(state);
+    if (editing) next.yearEnds = next.yearEnds.filter(e => e.year !== editing.year);
+    next.yearEnds.push(r.ye); next.yearEnds.sort((a, b) => a.year - b.year); changed(next);
+    if (persist(next, editing ? 'แก้แล้ว ตัวเลขทุกจุดคำนวณใหม่แล้ว' : 'บันทึกยอดสิ้นปีแล้ว')) { draft = null; go(editing ? `#/history/y/${r.ye.year}` : '#/home'); }
+  };
+  form.addEventListener('submit', e => { e.preventDefault(); submit(false, false); });
+  const cy = app.querySelector('#confirm-ye'); if (cy) cy.addEventListener('click', () => submit(true, false));
+}
+
+// =====================================================================
+// ประวัติ (F-05, F-11, AC-17, AC-18) — ช่วง A: ยอดเงิน + ยอดสิ้นปี
+// =====================================================================
+function renderHistory() {
+  if (!state.records.length && !state.yearEnds.length) {
+    return view(`${pageHead('ประวัติ')}<main><p class="muted">ยังไม่มีรายการ</p></main>`, 'history');
+  }
+  const r = compute(state);
+  const rows = r.empty ? [] : r.history;
+  const years = new Set(rows.map(x => +x.date.slice(0, 4)).concat(state.yearEnds.map(e => e.year)));
+  const groups = [...years].sort((a, b) => b - a).map(y => {
+    const items = rows.filter(x => +x.date.slice(0, 4) === y).map(x => {
+      const pu = x.principalUp;
+      const sub = x.principal != null
+        ? `เงินต้นรวม <span class="num">${fmtMoney(x.principal)}</span>${pu ? ` · เพิ่มจากครั้งก่อน <span class="num">${fmtSigned(pu.amount)}</span>${pu.skipped ? ` (เทียบ ${pu.yearEnd ? 'ยอดสิ้นปี ' + be(pu.yearEnd) : thaiDate(pu.vs)})` : ''}` : ''}`
+        : 'ยังไม่มีเงินต้น';
+      return `<a class="hist-item" href="#/history/b/${x.date}"><span class="row"><span>${thaiDate(x.date)}</span><span class="hist-type">ยอดเงิน</span></span>
+        <b class="num">${fmtMoney(x.v)} บาท</b><span class="xsmall muted">${sub}</span></a>`;
+    });
+    const ye = state.yearEnds.find(e => e.year === y);
+    if (ye) items.push(`<a class="hist-item" href="#/history/y/${y}"><span class="row"><span>${thaiDate(ye.date)}</span><span class="hist-type ye">ยอดสิ้นปี ${be(y)}</span></span>
+        <b class="num">${fmtMoney(ye.v)} บาท</b><span class="xsmall muted">เงินต้นรวม <span class="num">${fmtMoney(ye.pm + ye.pg)}</span></span></a>`);
+    return `<h2 class="hist-year">ปี ${be(y)}</h2>${items.join('')}`;
+  });
+  view(`${pageHead('ประวัติ', null, null, 'เรียงจากใหม่ไปเก่า แตะเพื่อดูรายละเอียด แก้ หรือลบ')}<main style="gap:10px">${groups.join('')}</main>`, 'history');
+}
+
+function renderBalanceDetail(date, askDelete) {
+  const rec = state.records.find(r => r.date === date);
+  if (!rec) return go('#/history');
+  const row = compute(state).history.find(x => x.date === date);
+  const vsTxt = o => o.yearEnd ? `เทียบยอดสิ้นปี ${be(o.yearEnd)}` : `เทียบ ${thaiDate(o.vs)}`;
+  const kv = [['ยอดเงิน', fmtMoney(rec.v) + ' บาท']];
+  if (rec.pm != null) {
+    kv.push([`เงินต้น · ${BOX.pm}`, fmtMoney(rec.pm)], [`เงินต้น · ${BOX.pg}`, fmtMoney(rec.pg)], ['เงินต้นรวม', fmtMoney(P(rec))], ['ผลประโยชน์', fmtMoney(row.benefit)]);
+  } else kv.push(['เงินต้น', 'ยังไม่ได้กรอก']);
+  kv.push(['ยอดเปลี่ยนจากครั้งก่อน', row.dV ? `${fmtSigned(row.dV.amount)} (${vsTxt(row.dV)})` : 'ยังไม่มีครั้งก่อนให้เทียบ']);
+  if (row.principalUp) kv.push(['เงินที่ส่งเข้าไปตั้งแต่ครั้งก่อน', `${fmtSigned(row.principalUp.amount)}${row.principalUp.skipped ? ` (${vsTxt(row.principalUp)})` : ''}`]);
+  kv.push([`กำไรปี ${be(+date.slice(0, 4))} ถึงวันนั้น`, row.yearProfit != null ? fmtMoney(row.yearProfit) : row.yearWhy]);
+  if (rec.note) kv.push(['บันทึกเพิ่มเติม', esc(rec.note)]);
+  detailView(`ยอดเงิน ${thaiDate(date)}`, kv, `#/record/balance/${date}`, askDelete, `ลบรายการวันที่ ${thaiDate(date)} ใช่ไหม`, () => {
+    const next = clone(state); next.records = next.records.filter(r => r.date !== date); changed(next);
+    if (persist(next, 'ลบแล้ว')) go(next.records.length ? '#/history' : '#/start');
+  }, `#/history/b/${date}`);
+}
+function renderYearEndDetail(year, askDelete) {
+  const ye = state.yearEnds.find(e => e.year === year);
+  if (!ye) return go('#/history');
+  const kv = [['วันที่', thaiDate(ye.date)], ['ยอดเงิน', fmtMoney(ye.v) + ' บาท'], [`เงินต้น · ${BOX.pm}`, fmtMoney(ye.pm)], [`เงินต้น · ${BOX.pg}`, fmtMoney(ye.pg)],
+              ['เงินต้นรวม', fmtMoney(ye.pm + ye.pg)], ['ผลประโยชน์', fmtMoney(ye.v - ye.pm - ye.pg)]];
+  detailView(`ยอดสิ้นปี ${be(year)}`, kv, `#/record/yearend/${year}`, askDelete, `ลบยอดสิ้นปี ${be(year)} ใช่ไหม`, () => {
+    const next = clone(state); next.yearEnds = next.yearEnds.filter(e => e.year !== year); changed(next);
+    if (persist(next, 'ลบแล้ว')) go('#/history');
+  }, `#/history/y/${year}`);
+}
+function detailView(title, kv, editHref, askDelete, delQ, onDelete, selfHref) {
+  view(`${pageHead(title, '#/history', 'ประวัติ')}
+  <main><section class="card"><dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd class="num" style="white-space:normal">${v}</dd>`).join('')}</dl></section>
+  ${askDelete
+    ? `<div class="warn-box" role="alert" tabindex="-1"><p>${delQ}</p><div class="btn-row"><button type="button" class="btn btn-danger" id="do-del">ลบ</button><a class="btn btn-soft" href="${selfHref}">ยกเลิก</a></div></div>`
+    : `<div class="btn-row"><a class="btn btn-soft" href="${editHref}">แก้</a><a class="btn btn-danger" href="${selfHref}/delete">ลบ</a></div>`}
+  </main>`, 'history');
+  const d = app.querySelector('#do-del'); if (d) { d.addEventListener('click', onDelete); app.querySelector('.warn-box').focus(); }
+}
+
+// =====================================================================
+// ข้อมูลและสำรอง (F-06, F-08, AC-20–AC-22, AC-24)
+// =====================================================================
+function backupFileName() { const d = today(); return `kasiansuk-backup-${be(+d.slice(0, 4))}-${d.slice(5)}.json`; }
+function markBackedUp() {
+  const next = clone(state); next.meta.lastBackupAt = nowStamp(); next.meta.changesSinceBackup = 0; next.meta.bannerDismissedChanges = 0;
+  persist(next); renderData();
+}
+function renderData() {
+  const has = !!state;
+  const m = has ? state.meta : null;
+  const canShare = has && navigator.canShare && (() => { try { return navigator.canShare({ files: [new File(['{}'], 'x.json', { type: 'application/json' })] }); } catch (e) { return false; } })();
+  view(`${pageHead('ข้อมูลและสำรอง', has ? null : '#/start', 'เริ่มใช้')}
+  <main>
+    ${loadError ? `<div class="alert" role="alert">อ่านข้อมูลเดิมในเครื่องไม่ได้: ${esc(loadError)} — แอพจะไม่เขียนทับข้อมูลเดิมเอง ถ้ามีไฟล์สำรอง กู้คืนได้ด้านล่าง</div>` : ''}
+    ${has ? `<section class="card">
+      <h2 class="card-title">สำรองข้อมูล</h2>
+      <p class="small muted" style="margin:0">${m.lastBackupAt ? `สำรองล่าสุด ${thaiDate(m.lastBackupAt.slice(0, 10))}` : 'ยังไม่เคยสำรอง'}</p>
+      <p class="small" style="margin:0">ไฟล์เดียวครบทุกปี เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง เช่น iCloud Drive, Google Drive หรือส่งเข้า LINE ของตัวเอง</p>
+      <button type="button" class="btn btn-primary" id="do-backup">บันทึกไฟล์สำรอง</button>
+      ${canShare ? '<button type="button" class="btn btn-soft" id="do-share">ส่งไฟล์สำรองไปแอพอื่น</button>' : ''}
+    </section>` : ''}
+    <section class="card">
+      <h2 class="card-title">กู้คืนจากไฟล์สำรอง</h2>
+      <p class="small muted" style="margin:0">เลือกไฟล์ แล้วแอพจะสรุปให้ดูก่อน ยังไม่แทนที่จนกว่าจะยืนยัน</p>
+      <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+      <label class="btn btn-soft" for="restore-file">เลือกไฟล์สำรอง</label>
+      <input type="file" id="restore-file" accept=".json,application/json" class="sr-only">
+    </section>
+    <section class="card">
+      <h2 class="card-title">ข้อความสำคัญ</h2>
+      <ul style="margin:0;padding-left:20px">${IMPORTANT_3.concat(IMPORTANT_MORE).map(t => `<li>${t}</li>`).join('')}</ul>
+    </section>
+    <p class="footer-note">เกษียณสุข รุ่น ${VERSION} (รุ่นทดสอบ) · ตัวอักษร Mitr และ IBM Plex Sans Thai Looped ใช้ตามสัญญาอนุญาต <a href="fonts/OFL-Mitr.txt">OFL</a></p>
+  </main>`, has ? 'data' : null);
+  const bk = app.querySelector('#do-backup');
+  if (bk) bk.addEventListener('click', () => {
+    const blob = new Blob([Store.makeBackup(state, nowStamp())], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = backupFileName();
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('สร้างไฟล์สำรองแล้ว เก็บไฟล์ไว้ให้ดี'); markBackedUp();
+  });
+  const sh = app.querySelector('#do-share');
+  if (sh) sh.addEventListener('click', async () => {
+    const file = new File([Store.makeBackup(state, nowStamp())], backupFileName(), { type: 'application/json' });
+    try { await navigator.share({ files: [file], title: 'ไฟล์สำรองเกษียณสุข' }); toast('ส่งไฟล์สำรองแล้ว'); markBackedUp(); }
+    catch (e) { if (e && e.name !== 'AbortError') toast('ส่งไฟล์ไม่สำเร็จ ลองปุ่ม "บันทึกไฟล์สำรอง" แทน'); }
+  });
+  app.querySelector('#restore-file').addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const p = Store.parseBackup(String(rd.result));
+      if (!p.ok) { showAlert(p.why + ' — ข้อมูลเดิมไม่ถูกแตะต้อง'); e.target.value = ''; return; }
+      pendingRestore = p; go('#/data/restore');
+    };
+    rd.onerror = () => showAlert('อ่านไฟล์ไม่สำเร็จ — ข้อมูลเดิมไม่ถูกแตะต้อง');
+    rd.readAsText(file);
+  });
+}
+function renderRestore() {
+  if (!pendingRestore) return go('#/data');
+  const s = pendingRestore.summary;
+  view(`${pageHead('กู้คืนจากไฟล์สำรอง', '#/data', 'ข้อมูลและสำรอง')}
+  <main><section class="card">
+    <h2 class="card-title">ไฟล์นี้มี</h2>
+    <dl class="kv"><dt>จำนวนปี</dt><dd>${s.years} ปี</dd><dt>ยอดเงิน</dt><dd>${s.records} รายการ</dd><dt>ยอดสิ้นปี</dt><dd>${s.yearEnds} รายการ</dd>
+      <dt>เงินนำส่ง</dt><dd>${s.deposit} รายการ</dd><dt>เปลี่ยนแผน</dt><dd>${s.plan} รายการ</dd><dt>ออมเพิ่ม</dt><dd>${s.saving} รายการ</dd>
+      <dt>ล่าสุด</dt><dd>${s.latest ? thaiDate(s.latest) : '—'}</dd></dl>
+    ${state ? '<div class="warn-box"><p><b>ข้อมูลในเครื่องนี้จะถูกแทนที่ทั้งหมด</b></p></div>' : ''}
+    <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+    <div class="btn-row"><button type="button" class="btn btn-primary" id="do-restore">แทนที่ด้วยไฟล์นี้</button><a class="btn btn-soft" href="#/data">ยกเลิก</a></div>
+  </section></main>`, state ? 'data' : null);
+  app.querySelector('#do-restore').addEventListener('click', () => {
+    const next = Store.stateFromBackup(pendingRestore.data, nowStamp());
+    if (persist(next, 'กู้คืนแล้ว')) { pendingRestore = null; loadError = null; go(next.records.length ? '#/home' : '#/data'); }
+  });
+}
+
+// ---------- ผูกปุ่มคำช่วย ----------
+function bindHelp() { app.querySelectorAll('[data-help]').forEach(b => b.addEventListener('click', () => openHelp(b.dataset.help))); }
+
+// ---------- เส้นทางหน้า ----------
+function render() {
+  const h = location.hash.replace(/^#/, '') || '/';
+  const [path, query] = h.split('?');
+  const parts = path.split('/').filter(Boolean);
+  if (path !== (render.last || '')) draft = null;   // ไปหน้าอื่น = ล้างค่าที่ค้างในฟอร์ม
+  render.last = path;
+  const hasData = state && (state.records.length || state.yearEnds.length);
+  if (parts[0] === 'data') return parts[1] === 'restore' ? renderRestore() : renderData();
+  if (loadError) return renderData();
+  if (!hasData) return parts[0] === 'data' ? renderData() : renderStart();
+  if (!state.records.length && parts[0] !== 'record' && parts[0] !== 'history') return renderStart();
+  switch (parts[0]) {
+    case 'record':
+      if (parts[1] === 'balance') return renderBalance(parts[2] || null);
+      if (parts[1] === 'yearend') { const q = new URLSearchParams(query || ''); return renderYearEnd(parts[2] ? +parts[2] : null, {}, {}, q.get('y') ? +q.get('y') : null); }
+      return renderRecordMenu();
+    case 'history':
+      if (parts[1] === 'b') return renderBalanceDetail(parts[2], parts[3] === 'delete');
+      if (parts[1] === 'y') return renderYearEndDetail(+parts[2], parts[3] === 'delete');
+      return renderHistory();
+    case 'start': return state.records.length ? go('#/home') : renderStart();
+    default: return renderHome();
+  }
+}
+
+// ---------- เริ่มทำงาน ----------
+const loaded = Store.load(localStorage);
+if (loaded.ok) state = loaded.state; else loadError = loaded.why;
+window.addEventListener('hashchange', render);
+render();
+})();
