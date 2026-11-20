@@ -1,11 +1,11 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.1.0 (ช่วง A ของขั้น Build)
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.2.0 (ช่วง A ของขั้น Build + แก้ตามที่ซันลองบน iPhone 20 พ.ย.)
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี, ประวัติ (ยอดเงิน + ยอดสิ้นปี),
 // ข้อมูลและสำรอง (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
 (function () {
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
 const { thaiDate, thaiDateShort, todayIso, moneyInput, MONTHS } = Forms;
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -30,12 +30,38 @@ const signed = (s, txt) => s > 0 ? `<span class="up num">${triUp('#1F7A4D')} ${t
 const LOGO = (w = 42, h = 44, label = true) => `<svg width="${w}" height="${h}" viewBox="0 0 42 44" ${label ? 'role="img" aria-label="โลโก้สมุดเกษียณสุข"' : 'aria-hidden="true"'}>
   <rect x="6" y="4" width="28" height="36" rx="6" fill="#CFE9DC"></rect><rect x="10" y="4" width="3" height="36" fill="#B2DCC7"></rect>
   <circle cx="24" cy="18" r="6" fill="#FFC9AE"></circle><ellipse cx="22" cy="31" rx="7" ry="3.5" fill="#8FCFB1" transform="rotate(-20 22 31)"></ellipse></svg>`;
-const SUN = `<svg width="70" height="56" viewBox="0 0 70 56" aria-hidden="true"><circle cx="44" cy="22" r="17" fill="#FFD9C4"></circle>
-  <ellipse cx="18" cy="40" rx="15" ry="7.5" fill="#BFE8D4" transform="rotate(-24 18 40)"></ellipse><ellipse cx="35" cy="46" rx="12" ry="6" fill="#A6DDC3" transform="rotate(18 35 46)"></ellipse></svg>`;
+// พระอาทิตย์ + เมฆฟ้า 2 ก้อน (แทนใบไม้ — ซันยืนยัน 20 พ.ย. 2569)
+const cloud = (x, y, k, c) => `<g transform="translate(${x} ${y}) scale(${k})" fill="${c}"><circle cx="10" cy="10" r="8"></circle><circle cx="20" cy="7" r="10"></circle><circle cx="30" cy="11" r="7"></circle><rect x="4" y="10" width="30" height="8" rx="4"></rect></g>`;
+const SUN = `<svg class="art" width="78" height="56" viewBox="0 0 78 56" aria-hidden="true"><circle cx="46" cy="22" r="17" fill="#FFD9C4"></circle>${cloud(2, 30, 0.95, '#CFE6F5')}${cloud(42, 36, 0.7, '#BFDDF2')}</svg>`;
 const BACK_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>';
 
 const IMPORTANT_3 = ['ไม่ใช่คำแนะนำการลงทุน', 'ไม่ใช่บริการทางการของ กบข.', 'ข้อมูลอยู่ในเครื่องคุณเท่านั้น ไม่ส่งออกไปที่ใด'];
 const IMPORTANT_MORE = ['ตัวเลขทั้งหมดคุณกรอกเองจาก My GPF ของ กบข.', 'ผลคำนวณใช้ประกอบการตัดสินใจเท่านั้น'];
+
+
+// ---------- เพิ่มไปหน้าจอโฮม (0.2.0 — ซันอยากให้ผู้ใช้ใช้แบบไอคอน) ----------
+const isStandalone = () => (window.navigator.standalone === true) || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const INSTALL_KEY = 'kasiansuk.installHidden';
+const installHidden = () => { try { return localStorage.getItem(INSTALL_KEY) === '1'; } catch (e) { return false; } };
+function installCard(dismissible) {
+  if (isStandalone()) return '';
+  if (dismissible && installHidden()) return '';
+  const steps = isIOS()
+    ? `<li>แตะปุ่มแชร์ของ Safari (สี่เหลี่ยมมีลูกศรชี้ขึ้น — ถ้าไม่เห็น แตะ ••• ก่อน)</li><li>เลื่อนหา <b>เพิ่มไปยังหน้าจอโฮม</b> (Add to Home Screen)</li><li>แตะ <b>เพิ่ม</b> แล้วเปิดแอพจากไอคอนเกษียณสุข</li>`
+    : `<li>แตะเมนูของเบราว์เซอร์ (⋮ มุมขวาบน)</li><li>เลือก <b>เพิ่มไปยังหน้าจอหลัก</b> หรือ <b>ติดตั้งแอพ</b></li><li>เปิดแอพจากไอคอนเกษียณสุข</li>`;
+  const hasData = state && (state.records.length || state.yearEnds.length);
+  return `<section class="install" aria-labelledby="install-h">
+    <div class="install-head"><h2 id="install-h">ใช้แบบไอคอนบนหน้าจอโฮม</h2>${dismissible ? '<button type="button" class="icon-btn" id="hide-install" aria-label="ปิดกล่องแนะนำ">✕</button>' : ''}</div>
+    <p>เปิดง่ายเหมือนแอพ และเสี่ยงข้อมูลหายน้อยกว่าเปิดในเบราว์เซอร์ (Safari อาจลบข้อมูลของเว็บที่ไม่ได้เปิดนานเกิน 7 วัน)</p>
+    <ol>${steps}</ol>
+    ${hasData ? '<p><b>ข้อมูลที่จดในเบราว์เซอร์จะไม่ตามไปที่ไอคอน</b> — สำรองข้อมูลก่อน แล้วกู้คืนในแอพที่เปิดจากไอคอน <a href="#/data">ไปสำรอง</a></p>' : ''}
+  </section>`;
+}
+function bindInstall() {
+  const b = app.querySelector('#hide-install');
+  if (b) b.addEventListener('click', () => { try { localStorage.setItem(INSTALL_KEY, '1'); } catch (e) {} const c = app.querySelector('.install'); if (c) c.remove(); });
+}
 
 // ---------- เก็บข้อมูล ----------
 function persist(next, okMsg) {
@@ -144,8 +170,9 @@ function view(html, tab) {
 // =====================================================================
 function renderStart(errors = {}) {
   const dr = draft || {};
-  view(`<header class="app-head"><div class="brand">${LOGO()}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
+  view(`<header class="app-head"><div class="brand">${LOGO(50, 52)}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
   <main>
+    ${installCard(false)}
     <section class="card">
       <h1 class="card-title" style="font-size:22px">ยินดีต้อนรับ</h1>
       <p style="margin:0">บอกกำไรปีนี้ของ กบข. แยกจากเงินที่ส่งเข้าไป</p>
@@ -166,7 +193,7 @@ function renderStart(errors = {}) {
     </section>
     <p class="small" style="text-align:center;margin:0">มีไฟล์สำรองอยู่แล้ว? <a href="#/data">กู้คืนจากไฟล์สำรอง</a></p>
   </main>`, null);
-  bindHelp();
+  bindHelp(); bindInstall();
   app.querySelector('#start-form').addEventListener('submit', e => {
     e.preventDefault();
     draft = readForm(e.target);
@@ -241,8 +268,9 @@ function renderHome() {
       ${r.principalSince ? `<span class="xsmall muted">เงินต้นอัปเดตล่าสุด ${thaiDate(r.principalSince)}</span>` : ''}`;
   }
 
-  view(`<header class="app-head"><div class="brand">${LOGO()}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
+  view(`<header class="app-head"><div class="brand">${LOGO(50, 52)}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
   <main>
+    ${installCard(true)}
     ${backupBannerNeeded() ? `<div class="banner" role="note"><p>สำรองข้อมูลไว้กันหาย <a href="#/data">ไปสำรอง</a></p><button type="button" class="icon-btn" id="hide-banner" aria-label="ปิดแถบชวนสำรอง">✕</button></div>` : ''}
     <section class="card" style="gap:4px">
       <span class="card-kicker">วันนี้ในสมุด</span>
@@ -259,7 +287,7 @@ function renderHome() {
     ${chartCard(r, Y)}
     <p class="footer-note">ไม่ใช่คำแนะนำการลงทุน · ไม่ใช่บริการทางการของ กบข.</p>
   </main>`, 'home');
-  bindHelp();
+  bindHelp(); bindInstall();
   const hb = app.querySelector('#hide-banner');
   if (hb) hb.addEventListener('click', () => {
     const next = clone(state); next.meta.bannerDismissedAt = nowStamp(); next.meta.bannerDismissedChanges = next.meta.changesSinceBackup || 0;
@@ -517,7 +545,6 @@ function markBackedUp() {
 function renderData() {
   const has = !!state;
   const m = has ? state.meta : null;
-  const canShare = has && navigator.canShare && (() => { try { return navigator.canShare({ files: [new File(['{}'], 'x.json', { type: 'application/json' })] }); } catch (e) { return false; } })();
   view(`${pageHead('ข้อมูลและสำรอง', has ? null : '#/start', 'เริ่มใช้')}
   <main>
     ${loadError ? `<div class="alert" role="alert">อ่านข้อมูลเดิมในเครื่องไม่ได้: ${esc(loadError)} — แอพจะไม่เขียนทับข้อมูลเดิมเอง ถ้ามีไฟล์สำรอง กู้คืนได้ด้านล่าง</div>` : ''}
@@ -525,8 +552,7 @@ function renderData() {
       <h2 class="card-title">สำรองข้อมูล</h2>
       <p class="small muted" style="margin:0">${m.lastBackupAt ? `สำรองล่าสุด ${thaiDate(m.lastBackupAt.slice(0, 10))}` : 'ยังไม่เคยสำรอง'}</p>
       <p class="small" style="margin:0">ไฟล์เดียวครบทุกปี เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง เช่น iCloud Drive, Google Drive หรือส่งเข้า LINE ของตัวเอง</p>
-      <button type="button" class="btn btn-primary" id="do-backup">บันทึกไฟล์สำรอง</button>
-      ${canShare ? '<button type="button" class="btn btn-soft" id="do-share">ส่งไฟล์สำรองไปแอพอื่น</button>' : ''}
+      <button type="button" class="btn btn-primary" id="do-backup">สำรองข้อมูล</button>
     </section>` : ''}
     <section class="card">
       <h2 class="card-title">กู้คืนจากไฟล์สำรอง</h2>
@@ -535,6 +561,7 @@ function renderData() {
       <label class="btn btn-soft" for="restore-file">เลือกไฟล์สำรอง</label>
       <input type="file" id="restore-file" accept=".json,application/json" class="sr-only">
     </section>
+    ${installCard(false)}
     <section class="card">
       <h2 class="card-title">ข้อความสำคัญ</h2>
       <ul style="margin:0;padding-left:20px">${IMPORTANT_3.concat(IMPORTANT_MORE).map(t => `<li>${t}</li>`).join('')}</ul>
@@ -542,18 +569,7 @@ function renderData() {
     <p class="footer-note">เกษียณสุข รุ่น ${VERSION} (รุ่นทดสอบ) · ตัวอักษร Mitr และ IBM Plex Sans Thai Looped ใช้ตามสัญญาอนุญาต <a href="fonts/OFL-Mitr.txt">OFL</a></p>
   </main>`, has ? 'data' : null);
   const bk = app.querySelector('#do-backup');
-  if (bk) bk.addEventListener('click', () => {
-    const blob = new Blob([Store.makeBackup(state, nowStamp())], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = backupFileName();
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    toast('สร้างไฟล์สำรองแล้ว เก็บไฟล์ไว้ให้ดี'); markBackedUp();
-  });
-  const sh = app.querySelector('#do-share');
-  if (sh) sh.addEventListener('click', async () => {
-    const file = new File([Store.makeBackup(state, nowStamp())], backupFileName(), { type: 'application/json' });
-    try { await navigator.share({ files: [file], title: 'ไฟล์สำรองเกษียณสุข' }); toast('ส่งไฟล์สำรองแล้ว'); markBackedUp(); }
-    catch (e) { if (e && e.name !== 'AbortError') toast('ส่งไฟล์ไม่สำเร็จ ลองปุ่ม "บันทึกไฟล์สำรอง" แทน'); }
-  });
+  if (bk) bk.addEventListener('click', backupFlow);
   app.querySelector('#restore-file').addEventListener('change', e => {
     const file = e.target.files && e.target.files[0]; if (!file) return;
     const rd = new FileReader();
@@ -566,6 +582,45 @@ function renderData() {
     rd.readAsText(file);
   });
 }
+
+// สำรองข้อมูล (0.2.0): กล่องข้อความของแอพบอกขั้นตอนก่อน → เปิดเมนูแชร์ของเครื่อง (มี "บันทึกไปยังไฟล์" ในหน้าแรก)
+// เครื่องที่เปิดเมนูแชร์พร้อมไฟล์ไม่ได้ → ดาวน์โหลดไฟล์แบบเดิม พร้อมบอกวิธีบน iPhone
+function backupFile() { return new File([Store.makeBackup(state, nowStamp())], backupFileName(), { type: 'application/json' }); }
+function canShareFile() {
+  try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File(['{}'], 'x.json', { type: 'application/json' })] })); } catch (e) { return false; }
+}
+function backupFlow() {
+  const share = canShareFile();
+  const steps = share
+    ? (isIOS()
+        ? '<li>หน้าถัดไปแตะ <b>บันทึกไปยังไฟล์</b> (Save to Files)</li><li>เลือกที่เก็บ เช่น <b>iCloud Drive</b> แล้วแตะ <b>บันทึก</b></li>'
+        : '<li>หน้าถัดไปเลือกที่เก็บไฟล์ เช่น Google Drive หรือส่งเข้า LINE ของตัวเอง</li><li>ยืนยันการบันทึก</li>')
+    : (isIOS()
+        ? '<li>ถ้าเห็นหน้ารูปไฟล์พื้นดำ แตะ <b>More…</b> (หรือปุ่มแชร์)</li><li>แตะ <b>บันทึกไปยังไฟล์</b> (Save to Files) แล้วเลือกที่เก็บ</li>'
+        : '<li>ไฟล์จะถูกบันทึกไว้ในโฟลเดอร์ดาวน์โหลด</li><li>ย้ายไฟล์ไปเก็บในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง</li>');
+  openSheet(`<h2>สำรองข้อมูล</h2>
+    <p style="margin:0">แอพจะสร้างไฟล์สำรองไฟล์เดียว ครบทุกปี ชื่อ <span class="num">${esc(backupFileName())}</span></p>
+    <div class="steps-box"><ol>${steps}</ol></div>
+    <p class="small muted" style="margin:0">เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง · ไฟล์นี้มีตัวเลขพอร์ตของคุณ อย่าส่งให้คนอื่น</p>
+    <div class="btn-row"><button type="button" class="btn btn-primary" id="bk-go">ไปต่อ</button><button type="button" class="btn btn-soft" data-close>ยกเลิก</button></div>`, sh => {
+    sh.querySelector('#bk-go').addEventListener('click', async () => {
+      if (share) {
+        try { await navigator.share({ files: [backupFile()] }); closeSheet(); toast('สำรองแล้ว'); markBackedUp(); }
+        catch (e) {
+          if (e && e.name === 'AbortError') return;          // ผู้ใช้ปิดเมนูแชร์เอง — ยังไม่ถือว่าสำรอง
+          closeSheet(); downloadBackup();
+        }
+      } else { closeSheet(); downloadBackup(); }
+    });
+  });
+}
+function downloadBackup() {
+  const blob = new Blob([Store.makeBackup(state, nowStamp())], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = backupFileName();
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('สร้างไฟล์สำรองแล้ว เก็บไฟล์ไว้ให้ดี'); markBackedUp();
+}
+
 function renderRestore() {
   if (!pendingRestore) return go('#/data');
   const s = pendingRestore.summary;

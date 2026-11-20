@@ -36,6 +36,8 @@
   --peach-tag: #9A4A2B;
   --principal-line: #E39A78;   /* กราฟ: เส้นเงินต้น */
   --benefit-fill: #FFE9DD;     /* กราฟ: ช่องผลประโยชน์ */
+  --sky: #CFE6F5;  --sky-2: #BFDDF2;  /* เมฆฟ้า (เพิ่ม 0.2.0) */
+  --icon-bg: #CCE7F8;   /* พื้นไอคอนแอพ */
   --pink-bg: #FBE3E6;  --pink-text: #7A3A45;   /* ป้าย "จดไว้" */
   --up: #1F7A4D;       --up-bg: #E3F4EA;       /* ขึ้น */
   --down: #B2413A;     --down-bg: #FDF1EF;  --down-border: #F3D3CE;  --down-label: #8A3B33;  /* ลง */
@@ -59,10 +61,12 @@ button { font: inherit; color: inherit; }
 
 #app { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
 main { flex: 1; padding: 8px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
-.has-nav main { padding-bottom: 96px; }
+/* เผื่อที่ใต้หน้าให้พ้นแถบล่าง — iPhone มีพื้นที่ขีดปัดกลับหน้าโฮมเพิ่ม (แก้ 0.2.0) */
+.has-nav main { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
 
 /* ---------- หัวหน้า ---------- */
-.app-head { padding: 26px 20px 8px; display: flex; justify-content: space-between; align-items: center; }
+.app-head { padding: 26px 20px 8px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.app-head .art { flex: none; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-name { font-family: var(--font-head); font-size: 22px; font-weight: 500; display: block; }
 .brand-sub { font-size: 13px; color: var(--text-2); display: block; }
@@ -184,3 +188,12 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 14px; margin: 0; }
 .kv dt { color: var(--text-2); }
 .kv dd { margin: 0; text-align: right; }
+
+/* กล่องแนะนำเพิ่มไปหน้าจอโฮม (0.2.0) */
+.install { background: var(--card); border-radius: 20px; padding: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; border: 1.5px solid var(--sky-2); }
+.install-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.install h2 { margin: 0; font-family: var(--font-head); font-size: 16px; font-weight: 500; }
+.install ol { margin: 0; padding-left: 22px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.install p { margin: 0; font-size: 13px; color: var(--text-2); }
+.steps-box { background: var(--mint); border-radius: 14px; padding: 12px 14px; }
+.steps-box ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
