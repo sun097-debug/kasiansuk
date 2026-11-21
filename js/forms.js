@@ -1,10 +1,11 @@
 // กติกาตรวจช่องกรอก และวันที่ภาษาไทย — แอพเกษียณสุข
 // แยกจากหน้าจอเพื่อให้ทดสอบได้ (tests/test-forms.js)
 (function (root, factory) {
-  const api = factory(root.Calc || (typeof require === 'function' ? require('./calc') : null));
+  const req = n => (typeof require === 'function' ? require(n) : null);
+  const api = factory(root.Calc || req('./calc'), root.Plans || req('./plans'));
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.Forms = api;
-})(typeof self !== 'undefined' ? self : this, function (Calc) {
+})(typeof self !== 'undefined' ? self : this, function (Calc, Plans) {
 
 const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const pad = n => String(n).padStart(2, '0');
@@ -111,5 +112,89 @@ function checkYearEnd(state, f, { editingYear = null, today }) {
            allZero: ye.v === 0 && ye.pm === 0 && ye.pg === 0 };      // ถามยืนยันสมาชิกใหม่ 1 ครั้ง
 }
 
-return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, checkYearEnd };
+// ---------- สมุดบันทึก: เงินนำส่ง / เปลี่ยนแผน / ออมเพิ่ม (F-13–F-15, Requirements v1.3 หัวข้อ 5.3) ----------
+// หลัก: ผิดตามหลักตัวเลข → บันทึกไม่ได้ (errors) / ผิดตามกฎของ กบข. → เตือนแต่ยืนยันบันทึกได้
+// สมุดไม่ใช้คำนวณ — ฟังก์ชันเหล่านี้ไม่แตะยอดเงินหรือยอดสิ้นปี
+// วันละ 1 รายการต่อประเภท (ซันยืนยัน 21 พ.ย. 2569) → วันซ้ำพาไปแก้รายการเดิม (duplicateOf = id)
+const ledgerDup = (state, type, date, editingId) =>
+  (state.ledger || []).find(x => x.type === type && x.date === date && x.id !== editingId);
+const cleanNote = t => String(t || '').trim();
+
+// % เต็มจำนวน: '5' → 5 ; ว่าง → 0 เมื่อ emptyIsZero (ช่องในแผนผสม)
+function parsePct(text, emptyIsZero) {
+  const s = String(text == null ? '' : text).replace(/\s/g, '').replace(/%$/, '');
+  if (s === '') return emptyIsZero ? { ok: true, value: 0 } : { ok: false, empty: true, why: 'กรุณากรอกอัตรา' };
+  if (/^[-−]/.test(s)) return { ok: false, why: 'ติดลบไม่ได้' };
+  if (/^\d*[.,]\d*$/.test(s) && /\d/.test(s)) return { ok: false, why: 'ใส่เป็นจำนวนเต็มเท่านั้น ไม่มีทศนิยม' };
+  if (!/^\d+$/.test(s)) return { ok: false, why: 'กรอกเป็นตัวเลขเท่านั้น' };
+  const v = Number(s);
+  if (v > 100) return { ok: false, why: 'เกิน 100% ไม่ได้' };
+  return { ok: true, value: v };
+}
+
+// เงินนำส่ง (F-13, AC-27): วันที่เงินเข้า + จำนวน (ยอดรวมช่องเดียว) + บันทึกเพิ่มเติม
+function checkDeposit(state, f, { editingId = null, today }) {
+  const errors = {};
+  const dt = checkDate(f.d, f.m, f.y, today); if (!dt.ok) errors.date = dt.why;
+  const a = parseMoney(f.a);
+  if (!a.ok) errors.a = a.why; else if (a.value === 0) errors.a = 'จำนวนเงินต้องมากกว่า 0';
+  if (Object.keys(errors).length) return { errors };
+  const dup = ledgerDup(state, 'deposit', dt.iso, editingId);
+  if (dup) return { errors: { date: 'มีเงินนำส่งวันที่นี้แล้ว' }, duplicateOf: dup.id };
+  return { errors: {}, item: { type: 'deposit', date: dt.iso, a: a.value, note: cleanNote(f.note) } };
+}
+
+// เปลี่ยนแผน (F-14, AC-28): f.plan = ชื่อจากรายการ; f.other = ชื่อที่พิมพ์เอง; f['mix-0'..] = % ของแผนย่อย
+function mixTotal(f) {
+  return Plans.MIX_PARTS.reduce((s, _, i) => { const p = parsePct(f['mix-' + i], true); return s + (p.ok ? p.value : 0); }, 0);
+}
+function checkPlan(state, f, { editingId = null, today }) {
+  const errors = {};
+  const dt = checkDate(f.d, f.m, f.y, today); if (!dt.ok) errors.date = dt.why;
+  const name = String(f.plan || '');
+  const known = Plans.CURRENT.concat(Plans.CLOSED, [Plans.OTHER]);
+  let item = null, total = null, goldOver = false;
+  if (!name) errors.plan = 'กรุณาเลือกแผน';
+  else if (!known.includes(name)) errors.plan = 'ไม่พบแผนนี้ในรายชื่อ เลือกใหม่ หรือเลือก "แผนอื่น (พิมพ์เอง)"';
+  else if (name === Plans.OTHER) {
+    const t = String(f.other || '').trim().replace(/\s+/g, ' ');
+    if (!t) errors.other = 'กรุณาพิมพ์ชื่อแผน';
+    else if (t.length > 80) errors.other = 'ชื่อแผนยาวเกินไป (ไม่เกิน 80 ตัวอักษร)';
+    else item = { plan: t, other: true };
+  } else if (name === Plans.MIX) {
+    const mix = []; total = 0; let partErr = false;
+    Plans.MIX_PARTS.forEach((part, i) => {
+      const p = parsePct(f['mix-' + i], true);
+      if (!p.ok) { errors['mix-' + i] = p.why; partErr = true; return; }
+      total += p.value; if (p.value > 0) mix.push({ plan: part, pct: p.value });
+      if (part === Plans.GOLD && p.value > Plans.GOLD_MAX) goldOver = true;
+    });
+    if (!partErr && total !== 100) errors.mix = total === 0 ? 'ใส่ % อย่างน้อย 1 แผน ให้รวมได้ 100%' : `ต้องรวมได้ 100% (ตอนนี้ ${total}%)`;
+    item = { plan: name, mix };
+  } else item = { plan: name };
+  if (Object.keys(errors).length) return { errors, total };
+  const dup = ledgerDup(state, 'plan', dt.iso, editingId);
+  if (dup) return { errors: { date: 'มีการเปลี่ยนแผนวันที่นี้แล้ว' }, duplicateOf: dup.id, total };
+  return { errors: {}, total, goldOver, item: Object.assign({ type: 'plan', date: dt.iso }, item, { note: cleanNote(f.note) }) };
+}
+
+// ออมเพิ่ม (F-15, AC-29): อัตรา % ของเงินเดือน เต็มจำนวน; เกิน 27 → เตือนแต่ยืนยันได้
+function checkSaving(state, f, { editingId = null, today }) {
+  const errors = {};
+  const dt = checkDate(f.d, f.m, f.y, today); if (!dt.ok) errors.date = dt.why;
+  const r = parsePct(f.rate, false); if (!r.ok) errors.rate = r.why;
+  if (Object.keys(errors).length) return { errors };
+  const dup = ledgerDup(state, 'saving', dt.iso, editingId);
+  if (dup) return { errors: { date: 'มีการออมเพิ่มวันที่นี้แล้ว' }, duplicateOf: dup.id };
+  return { errors: {}, over: r.value > Plans.SAVING_MAX, item: { type: 'saving', date: dt.iso, rate: r.value, note: cleanNote(f.note) } };
+}
+
+// รายการสมุดล่าสุดที่มีผลแล้ว (ไม่เกินวันนี้) ของแต่ละประเภท — ใช้กับ F-17
+function latestLedger(state, type, today) {
+  const xs = (state.ledger || []).filter(x => x.type === type && x.date <= today).sort((a, b) => (a.date < b.date ? -1 : 1));
+  return xs.length ? xs[xs.length - 1] : null;
+}
+
+return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, checkYearEnd,
+         parsePct, mixTotal, checkDeposit, checkPlan, checkSaving, latestLedger };
 });

@@ -1,11 +1,12 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.3.2 (ชื่อแท็บ "สำรองข้อมูล" 21 พ.ย.) · ก่อนหน้า 0.3.1, 0.2.0
-// หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี, ประวัติ (ยอดเงิน + ยอดสิ้นปี),
-// สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.0 (Build ช่วง B: สมุด 3 หน้า + ประวัติรวมทุกประเภท) · ก่อนหน้า 0.3.2, 0.3.1, 0.2.0
+// หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ + สรุปสมุด), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี,
+// จดเงินนำส่ง / จดการเปลี่ยนแผน / จดการออมเพิ่ม (ไม่ใช้คำนวณ), ประวัติ (ทุกประเภท + ตัวกรอง),
+// สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ)
 (function () {
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
 const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
-const VERSION = '0.3.2';
+const VERSION = '0.4.0';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -50,7 +51,7 @@ function installCard(dismissible) {
   const steps = isIOS()
     ? `<li>แตะปุ่มแชร์ของ Safari (สี่เหลี่ยมมีลูกศรชี้ขึ้น — ถ้าไม่เห็น แตะ ••• ก่อน)</li><li>เลื่อนหา <b>เพิ่มไปยังหน้าจอโฮม</b> (Add to Home Screen)</li><li>แตะ <b>เพิ่ม</b> แล้วเปิดแอพจากไอคอนเกษียณสุข</li>`
     : `<li>แตะเมนูของเบราว์เซอร์ (⋮ มุมขวาบน)</li><li>เลือก <b>เพิ่มไปยังหน้าจอหลัก</b> หรือ <b>ติดตั้งแอพ</b></li><li>เปิดแอพจากไอคอนเกษียณสุข</li>`;
-  const hasData = state && (state.records.length || state.yearEnds.length);
+  const hasData = state && (state.records.length || state.yearEnds.length || state.ledger.length);
   return `<section class="install" aria-labelledby="install-h">
     <div class="install-head"><h2 id="install-h">ใช้แบบไอคอนบนหน้าจอโฮม</h2>${dismissible ? '<button type="button" class="icon-btn" id="hide-install" aria-label="ปิดกล่องแนะนำ">✕</button>' : ''}</div>
     <p>เปิดง่ายเหมือนแอพ และเสี่ยงข้อมูลหายน้อยกว่าเปิดในเบราว์เซอร์ (Safari อาจลบข้อมูลของเว็บที่ไม่ได้เปิดนานเกิน 7 วัน)</p>
@@ -110,6 +111,10 @@ const HELP = {
     <li>เลื่อนลง แตะ <b>ดูยอดเงินย้อนหลังรายปี</b> แล้วเลือกปี</li>
     <li>กรอกวันที่ ยอดเงิน และเงินต้นของ 2 กล่องตามที่แสดง</li></ol>
     <p class="small muted" style="margin:0">หรือใช้ใบแจ้งยอดสิ้นปีจาก กบข. ก็ได้</p>`,
+  deposit: `<h2>เงินนำส่งดูได้จากไหน</h2>
+    <ol><li>My GPF → <b>My Account</b> → <b>ยอดเงิน กบข.</b></li>
+    <li>เลื่อนลง แตะ <b>รายการเคลื่อนไหวบัญชี</b></li>
+    <li>ใส่ยอดรวมของบรรทัด <b>"เงินนำส่ง"</b> — ไม่ต้องแยกเงินสะสม / เงินสมทบ / เงินสะสมส่วนเพิ่ม / เงินชดเชย</li></ol>`,
   pct: `<h2>% ของแอพต่างจาก My GPF อย่างไร</h2>
     <p style="margin:0">ของแอพ = ผลตอบแทนตั้งแต่ 1 ม.ค. ถึงวันที่ข้อมูล</p>
     <p style="margin:0">ของ My GPF = อัตราเฉลี่ยต่อปีหลายปี อัปเดตสัปดาห์ละครั้ง ตัวเลขจึงไม่เท่ากัน</p>
@@ -301,6 +306,7 @@ function renderHome() {
       ${yearCard}
     </section>
     ${chartCard(r, Y)}
+    ${ledgerSummaryCard()}
     <p class="footer-note">ไม่ใช่คำแนะนำการลงทุน · ไม่ใช่บริการทางการของ กบข.</p>
   </main>`, 'home');
   bindHelp(); bindInstall();
@@ -310,6 +316,16 @@ function renderHome() {
     if (persist(next)) renderHome();
   });
   app.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => { chartRange = b.dataset.range; renderHome(); }));
+}
+
+// สรุปสมุดบนหน้าหลัก (F-17 ควรมี) — แสดงเฉพาะเมื่อเคยจดเปลี่ยนแผนหรือออมเพิ่ม; ใช้รายการล่าสุดที่มีผลแล้ว
+function ledgerSummaryCard() {
+  const t = today(), p = Forms.latestLedger(state, 'plan', t), s = Forms.latestLedger(state, 'saving', t);
+  if (!p && !s) return '';
+  const parts = [];
+  if (p) parts.push(`แผนล่าสุดที่จด: <b>${esc(p.plan)}</b> (ตั้งแต่ ${thaiDate(p.date)})`);
+  if (s) parts.push(`ออมเพิ่ม <b>${s.rate}%</b>`);
+  return `<section class="card nb-sum"><span class="tag tag-jot">จดไว้</span><p style="margin:0">${parts.join(' · ')}</p></section>`;
 }
 
 // กราฟยอดเงินกับเงินต้น (F-10): 2 เส้น จุดเฉพาะวันที่บันทึกจริง + ยอดสิ้นปี; ช่องว่าง = ผลประโยชน์
@@ -357,15 +373,19 @@ function chartSvg(pts) {
 }
 
 // =====================================================================
-// เมนูบันทึก (F-16) — ช่วง A มี 2 อย่าง; สมุด 3 อย่างเพิ่มในช่วง B
+// เมนูบันทึก (F-16) — บันทึกยอดใหม่เด่นสุด; สมุด 3 อย่างติดป้าย "ไม่บังคับ"
 // =====================================================================
 function renderRecordMenu() {
+  const opt = '<span class="tag tag-opt">ไม่บังคับ</span>';
   view(`${pageHead('บันทึก')}
   <main><div class="menu-list">
     <a class="menu-item main" href="#/record/balance"><span><span class="t" style="font-size:18px">บันทึกยอดใหม่</span><span class="d">จากหน้ายอดเงิน กบข. ใน My GPF</span></span></a>
     <a class="menu-item" href="#/record/yearend"><span><span class="t">ยอดสิ้นปี</span><span class="d muted">จาก "ดูยอดเงินย้อนหลังรายปี"</span></span></a>
+    <a class="menu-item" href="#/record/deposit"><span><span class="t">เงินนำส่ง ${opt}</span></span></a>
+    <a class="menu-item" href="#/record/plan"><span><span class="t">เปลี่ยนแผน ${opt}</span></span></a>
+    <a class="menu-item" href="#/record/saving"><span><span class="t">ออมเพิ่ม ${opt}</span></span></a>
   </div>
-  <p class="small muted" style="margin:0">เร็ว ๆ นี้: จดเงินนำส่ง เปลี่ยนแผน และออมเพิ่ม (ไม่บังคับ จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร)</p>
+  <p class="small muted" style="margin:0">เงินนำส่ง เปลี่ยนแผน และออมเพิ่ม จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
   </main>`, 'record');
 }
 
@@ -486,30 +506,215 @@ function renderYearEnd(editYear, errors = {}, extra = {}, defYear) {
 }
 
 // =====================================================================
-// ประวัติ (F-05, F-11, AC-17, AC-18) — ช่วง A: ยอดเงิน + ยอดสิ้นปี
+// สมุดบันทึก 3 หน้า (F-13–F-15) — จดไว้ดูย้อนหลัง ไม่ใช้คำนวณ; หน้าตาแบบสมุด (UX 5.6)
 // =====================================================================
-function renderHistory() {
-  if (!state.records.length && !state.yearEnds.length) {
-    return view(`${pageHead('ประวัติ')}<main><p class="muted">ยังไม่มีรายการ</p></main>`, 'history');
+const LEDGER_LABEL = { deposit: 'เงินนำส่ง', plan: 'เปลี่ยนแผน', saving: 'ออมเพิ่ม' };
+const LEDGER_TITLE = { deposit: 'จดเงินนำส่ง', plan: 'จดการเปลี่ยนแผน', saving: 'จดการออมเพิ่ม' };
+const findLedger = id => (state.ledger || []).find(x => x.id === id);
+function newId() { let id; do { id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6); } while (findLedger(id)); return id; }
+const noteField = v => `<div class="field"><label for="f-note">บันทึกเพิ่มเติม <span class="opt">ไม่บังคับ</span></label>
+  <textarea id="f-note" name="note" rows="2">${esc(v)}</textarea></div>`;
+function ledgerPage(type, editing, body, after = '') {
+  const title = editing ? `แก้${LEDGER_LABEL[type]} ${thaiDate(editing.date)}` : LEDGER_TITLE[type];
+  view(`${pageHead(title, editing ? `#/history/l/${editing.id}` : '#/record', editing ? 'รายละเอียด' : 'บันทึก', null, true)}
+  <main><section class="card notebook">${body}</section>${after}</main>`, 'record');
+  bindHelp();
+}
+const warnConfirm = msg => `<div class="warn-box" role="alert" tabindex="-1"><p>${msg}</p><button type="button" class="btn btn-primary" id="confirm-warn">ยืนยันบันทึก</button></div>`;
+// เก็บรายการสมุด — ไม่นับเข้าแถบชวนสำรอง (ซัน 21 พ.ย.: ไม่อยากรบกวนผู้ใช้ เรื่องนี้รอคุยละเอียด)
+function saveLedger(item, editing, after) {
+  const next = clone(state);
+  const it = Object.assign({ id: editing ? editing.id : newId() }, item);
+  next.ledger = editing ? next.ledger.map(x => (x.id === editing.id ? it : x)) : next.ledger.concat([it]);
+  if (persist(next, editing ? 'แก้แล้ว' : 'จดลงสมุดแล้ว')) { draft = null; after(it); }
+}
+function bindLedgerForm(check, rerender, editing, afterNew) {
+  const form = app.querySelector('#lg-form');
+  const submit = ok => {
+    draft = readForm(form);
+    const r = check(state, draft, { editingId: editing ? editing.id : null, today: today() });
+    if (Object.keys(r.errors).length) { rerender(r.errors, { duplicateOf: r.duplicateOf }); focusFirstError(); return; }
+    if ((r.goldOver || r.over) && !ok) { rerender({}, { warn: true }); focusFirstError(); return; }
+    saveLedger(r.item, editing, it => (editing ? go(`#/history/l/${it.id}`) : afterNew(it)));
+  };
+  form.addEventListener('submit', e => { e.preventDefault(); submit(false); });
+  const c = app.querySelector('#confirm-warn'); if (c) c.addEventListener('click', () => submit(true));
+  return form;
+}
+const editOf = (id, type) => { const x = id ? findLedger(id) : null; return x && x.type === type ? x : null; };
+
+// ---------- จดเงินนำส่ง (F-13, AC-27) ----------
+function renderDeposit(editId, errors = {}, extra = {}) {
+  const editing = editOf(editId, 'deposit');
+  if (editId && !editing) return go('#/history');
+  const dr = draft || (editing ? { a: moneyInput(editing.a), note: editing.note || '' } : { a: '', note: '' });
+  const dateIso = isoFromDraft(draft) || (editing ? editing.date : today());
+  const recent = editing ? [] : state.ledger.filter(x => x.type === 'deposit').sort((x, y) => (x.date < y.date ? 1 : -1)).slice(0, 3);
+  ledgerPage('deposit', editing, `
+    <p class="nb-note">จดไว้ดูย้อนหลัง กำไรคำนวณจากเงินต้น</p>
+    <button type="button" class="link-btn" data-help="deposit">ดูได้จากไหนใน My GPF</button>
+    <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+    <form id="lg-form" novalidate>
+      ${dateFields('date', dateIso, errors.date, 'วันที่เงินเข้า', 'ตามรายการเคลื่อนไหวบัญชีใน My GPF')}
+      ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/deposit/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
+      ${moneyField('a', 'จำนวน (บาท)', dr.a, errors.a, 'ยอดรวมของบรรทัด "เงินนำส่ง"')}
+      ${noteField(dr.note)}
+      <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'จดลงสมุด'}</button>
+    </form>`,
+    recent.length ? `<section class="recent" aria-labelledby="recent-h"><h2 id="recent-h" class="hist-year">จดล่าสุด</h2>${recent.map(ledgerRow).join('')}</section>` : '');
+  bindLedgerForm(Forms.checkDeposit, (e, x) => renderDeposit(editId, e, x), editing, () => renderDeposit(null));
+}
+
+// ---------- จดการเปลี่ยนแผน (F-14, AC-28) ----------
+function renderPlan(editId, errors = {}, extra = {}) {
+  const editing = editOf(editId, 'plan');
+  if (editId && !editing) return go('#/history');
+  let dr = draft;
+  if (!dr) {
+    dr = { plan: '', other: '', note: '' };
+    if (editing) {
+      dr.note = editing.note || '';
+      const known = Plans.CURRENT.concat(Plans.CLOSED).includes(editing.plan);
+      if (editing.other || !known) { dr.plan = Plans.OTHER; dr.other = editing.plan; } else dr.plan = editing.plan;
+      if (editing.mix) Plans.MIX_PARTS.forEach((pt, i) => { const m = editing.mix.find(x => x.plan === pt); dr['mix-' + i] = m ? String(m.pct) : ''; });
+    }
   }
+  const dateIso = isoFromDraft(draft) || (editing ? editing.date : today());
+  const sel = dr.plan;
+  const opt = (v, label) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(label || v)}</option>`;
+  const options = `<option value=""${sel ? '' : ' selected'}>— เลือกแผน —</option>${Plans.CURRENT.map(v => opt(v)).join('')}
+    <option disabled>──────────</option>${Plans.CLOSED.map(v => opt(v, v + ' · ปิดรับแล้ว')).join('')}${opt(Plans.OTHER)}`;
+  const err = k => (errors[k] ? `<span class="err">${esc(errors[k])}</span>` : '');
+  const inv = k => (errors[k] ? ' aria-invalid="true"' : '');
+  const mixRows = Plans.MIX_PARTS.map((pt, i) => `<div class="mix-row">
+      <label for="f-mix-${i}">${pt}${pt === Plans.GOLD ? ` <span class="opt">(ไม่เกิน ${Plans.GOLD_MAX})</span>` : ''}</label>
+      <span class="pct-in"><input type="text" id="f-mix-${i}" name="mix-${i}" inputmode="numeric" autocomplete="off" value="${esc(dr['mix-' + i] || '')}"${inv('mix-' + i)}><span aria-hidden="true">%</span></span>
+      ${err('mix-' + i)}</div>`).join('');
+  ledgerPage('plan', editing, `
+    <p class="nb-note">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
+    <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+    <form id="lg-form" novalidate>
+      ${dateFields('date', dateIso, errors.date, 'วันที่มีผล', 'วันที่แผนใหม่เริ่มมีผลตาม My GPF')}
+      ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/plan/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
+      <div class="field"><label for="f-plan">แผน</label><select id="f-plan" name="plan"${inv('plan')}>${options}</select>${err('plan')}</div>
+      <div class="field" id="other-box"${sel === Plans.OTHER ? '' : ' hidden'}><label for="f-other">ชื่อแผน</label>
+        <input type="text" id="f-other" name="other" maxlength="80" autocomplete="off" value="${esc(dr.other || '')}"${inv('other')}>${err('other')}</div>
+      <fieldset class="mix" id="mix-box"${sel === Plans.MIX ? '' : ' hidden'}><legend>สัดส่วนของแต่ละแผน</legend>
+        <span class="hint">ใส่ % เต็มจำนวน ช่องที่เว้นว่าง = 0</span>
+        ${mixRows}
+        <div class="mix-total" id="mix-total" aria-live="polite"></div>${err('mix')}</fieldset>
+      ${extra.warn ? warnConfirm(`แผนทองคำปกติเลือกได้ไม่เกิน ${Plans.GOLD_MAX}% ตรวจกับ My GPF อีกครั้ง ถ้าถูกแล้วกดยืนยัน`) : ''}
+      ${noteField(dr.note)}
+      <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'จดลงสมุด'}</button>
+    </form>`);
+  const form = bindLedgerForm(Forms.checkPlan, (e, x) => renderPlan(editId, e, x), editing, () => go('#/history?f=plan'));
+  const selEl = form.querySelector('#f-plan'), btn = form.querySelector('button[type=submit]'), box = form.querySelector('#mix-total');
+  const update = () => {
+    const v = selEl.value;
+    form.querySelector('#mix-box').hidden = v !== Plans.MIX;
+    form.querySelector('#other-box').hidden = v !== Plans.OTHER;
+    if (v !== Plans.MIX) { btn.disabled = false; return; }
+    let bad = false;
+    form.querySelectorAll('[name^="mix-"]').forEach(el => { const ok = Forms.parsePct(el.value, true).ok; el.toggleAttribute('aria-invalid', !ok); if (!ok) { el.setAttribute('aria-invalid', 'true'); bad = true; } });
+    const t = Forms.mixTotal(readForm(form)), ok = !bad && t === 100;
+    box.className = 'mix-total' + (ok ? ' ok' : '');
+    box.innerHTML = bad ? 'ใส่ได้เฉพาะจำนวนเต็ม ไม่ติดลบ — แก้ช่องที่มีกรอบสีแดง'
+      : ok ? `<span aria-hidden="true">✓</span> รวมตอนนี้ 100% ครบแล้ว` : `รวมตอนนี้ ${t}% — ต้องรวมได้ 100%`;
+    btn.disabled = !ok;
+  };
+  selEl.addEventListener('change', update);
+  form.querySelectorAll('[name^="mix-"]').forEach(el => el.addEventListener('input', update));
+  update();
+}
+
+// ---------- จดการออมเพิ่ม (F-15, AC-29) ----------
+function renderSaving(editId, errors = {}, extra = {}) {
+  const editing = editOf(editId, 'saving');
+  if (editId && !editing) return go('#/history');
+  const dr = draft || (editing ? { rate: String(editing.rate), note: editing.note || '' } : { rate: '', note: '' });
+  const dateIso = isoFromDraft(draft) || (editing ? editing.date : today());
+  ledgerPage('saving', editing, `
+    <p class="nb-note">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
+    <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
+    <form id="lg-form" novalidate>
+      ${dateFields('date', dateIso, errors.date, 'วันที่มีผล', null)}
+      ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/saving/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
+      <div class="field"><label for="f-rate">อัตราออมเพิ่ม (% ของเงินเดือน)</label>
+        <span class="pct-in"><input type="text" id="f-rate" name="rate" inputmode="numeric" autocomplete="off" value="${esc(dr.rate)}"${errors.rate ? ' aria-invalid="true"' : ''}><span aria-hidden="true">%</span></span>
+        <span class="hint">เต็มจำนวน ไม่รวมเงินสะสมภาคบังคับ 3%</span>${errors.rate ? `<span class="err">${esc(errors.rate)}</span>` : ''}</div>
+      ${extra.warn ? warnConfirm(`ปกติออมเพิ่มได้ไม่เกิน ${Plans.SAVING_MAX}% ตรวจกับ My GPF อีกครั้ง ถ้าถูกแล้วกดยืนยัน`) : ''}
+      ${noteField(dr.note)}
+      <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'จดลงสมุด'}</button>
+    </form>`);
+  bindLedgerForm(Forms.checkSaving, (e, x) => renderSaving(editId, e, x), editing, () => go('#/history?f=saving'));
+}
+
+// =====================================================================
+// ประวัติ (F-05, F-11, AC-17, AC-18, AC-30) — เส้นเวลารวมทุกประเภท + ตัวกรอง
+// =====================================================================
+const FILTERS = [['all', 'ทั้งหมด'], ['balance', 'ยอดเงิน'], ['deposit', 'เงินนำส่ง'], ['plan', 'เปลี่ยนแผน'], ['saving', 'ออมเพิ่ม']];
+const KIND_ORDER = { balance: 0, deposit: 1, plan: 2, saving: 3 };   // วันเดียวกัน: เรียงตามนี้
+const shortPlan = n => n.replace(/^แผน/, '');
+function ledgerRow(x) {
+  let body;
+  if (x.type === 'deposit') body = `<b class="num">${fmtMoney(x.a)} บาท</b>`;
+  else if (x.type === 'plan') body = `<b>→ ${esc(x.plan)}</b>${x.mix ? `<span class="xsmall muted">${x.mix.map(m => `${esc(shortPlan(m.plan))} ${m.pct}%`).join(' · ')}</span>` : ''}`;
+  else body = `<b>→ ${x.rate}%</b><span class="xsmall muted">ของเงินเดือน</span>`;
+  return `<a class="hist-item" href="#/history/l/${esc(x.id)}"><span class="row"><span>${thaiDate(x.date)}</span><span class="hist-type lg">${LEDGER_LABEL[x.type]}</span></span>${body}</a>`;
+}
+function balanceRow(x) {
+  const pu = x.principalUp;
+  const sub = x.principal != null
+    ? `เงินต้นรวม <span class="num">${fmtMoney(x.principal)}</span>${pu ? ` · เพิ่มจากครั้งก่อน <span class="num">${fmtSigned(pu.amount)}</span>${pu.skipped ? ` (เทียบ ${pu.yearEnd ? 'ยอดสิ้นปี ' + be(pu.yearEnd) : thaiDate(pu.vs)})` : ''}` : ''}`
+    : 'ยังไม่มีเงินต้น';
+  return `<a class="hist-item" href="#/history/b/${x.date}"><span class="row"><span>${thaiDate(x.date)}</span><span class="hist-type">ยอดเงิน</span></span>
+    <b class="num">${fmtMoney(x.v)} บาท</b><span class="xsmall muted">${sub}</span></a>`;
+}
+function renderHistory(filter) {
+  const f = FILTERS.some(([k]) => k === filter) ? filter : 'all';
+  const show = k => f === 'all' || f === k;
+  const chips = `<nav class="chips" aria-label="กรองตามประเภท">${FILTERS.map(([k, l]) =>
+    `<a href="#/history${k === 'all' ? '' : '?f=' + k}"${k === f ? ' aria-current="true"' : ''}>${l}</a>`).join('')}</nav>`;
   const r = compute(state);
-  const rows = r.empty ? [] : r.history;
-  const years = new Set(rows.map(x => +x.date.slice(0, 4)).concat(state.yearEnds.map(e => e.year)));
+  const entries = [];
+  if (show('balance') && !r.empty) r.history.forEach(x => entries.push({ date: x.date, k: 0, html: balanceRow(x) }));
+  state.ledger.forEach(x => { if (show(x.type)) entries.push({ date: x.date, k: KIND_ORDER[x.type], html: ledgerRow(x) }); });
+  const yes = show('balance') ? state.yearEnds : [];
+  const head = pageHead('ประวัติ', null, null, 'เรียงจากใหม่ไปเก่า แตะเพื่อดูรายละเอียด แก้ หรือลบ');
+  if (!entries.length && !yes.length) {
+    const label = FILTERS.find(([k]) => k === f)[1];
+    const msg = f === 'all' ? 'ยังไม่มีรายการ' : `ยังไม่มีรายการ${label}`;
+    const link = LEDGER_LABEL[f] ? ` <a href="#/record/${f}">จด${label}</a>` : '';
+    return view(`${head}<main style="gap:10px">${chips}<p class="muted" style="margin:0">${msg}${link}</p></main>`, 'history');
+  }
+  entries.sort((a, b) => (a.date === b.date ? a.k - b.k : a.date < b.date ? 1 : -1));
+  const years = new Set(entries.map(e => +e.date.slice(0, 4)).concat(yes.map(e => e.year)));
   const groups = [...years].sort((a, b) => b - a).map(y => {
-    const items = rows.filter(x => +x.date.slice(0, 4) === y).map(x => {
-      const pu = x.principalUp;
-      const sub = x.principal != null
-        ? `เงินต้นรวม <span class="num">${fmtMoney(x.principal)}</span>${pu ? ` · เพิ่มจากครั้งก่อน <span class="num">${fmtSigned(pu.amount)}</span>${pu.skipped ? ` (เทียบ ${pu.yearEnd ? 'ยอดสิ้นปี ' + be(pu.yearEnd) : thaiDate(pu.vs)})` : ''}` : ''}`
-        : 'ยังไม่มีเงินต้น';
-      return `<a class="hist-item" href="#/history/b/${x.date}"><span class="row"><span>${thaiDate(x.date)}</span><span class="hist-type">ยอดเงิน</span></span>
-        <b class="num">${fmtMoney(x.v)} บาท</b><span class="xsmall muted">${sub}</span></a>`;
-    });
-    const ye = state.yearEnds.find(e => e.year === y);
+    const items = entries.filter(e => +e.date.slice(0, 4) === y).map(e => e.html);
+    const ye = yes.find(e => e.year === y);   // ยอดสิ้นปีอยู่ท้ายกลุ่มปีของตัวเอง (UX 3.5)
     if (ye) items.push(`<a class="hist-item" href="#/history/y/${y}"><span class="row"><span>${thaiDate(ye.date)}</span><span class="hist-type ye">ยอดสิ้นปี ${be(y)}</span></span>
         <b class="num">${fmtMoney(ye.v)} บาท</b><span class="xsmall muted">เงินต้นรวม <span class="num">${fmtMoney(ye.pm + ye.pg)}</span></span></a>`);
     return `<h2 class="hist-year">ปี ${be(y)}</h2>${items.join('')}`;
   });
-  view(`${pageHead('ประวัติ', null, null, 'เรียงจากใหม่ไปเก่า แตะเพื่อดูรายละเอียด แก้ หรือลบ')}<main style="gap:10px">${groups.join('')}</main>`, 'history');
+  view(`${head}<main style="gap:10px">${chips}${groups.join('')}</main>`, 'history');
+}
+
+function renderLedgerDetail(id, askDelete) {
+  const x = findLedger(id);
+  if (!x) return go('#/history');
+  const kv = [[x.type === 'deposit' ? 'วันที่เงินเข้า' : 'วันที่มีผล', thaiDate(x.date)]];
+  if (x.type === 'deposit') kv.push(['จำนวน', fmtMoney(x.a) + ' บาท']);
+  if (x.type === 'plan') {
+    kv.push(['แผน', esc(x.plan) + (x.other ? ' <span class="opt">(พิมพ์เอง)</span>' : '')]);
+    if (x.mix) x.mix.forEach(m => kv.push([`<span class="mix-k">${esc(m.plan)}</span>`, m.pct + '%']));
+  }
+  if (x.type === 'saving') kv.push(['อัตราออมเพิ่ม', x.rate + '% ของเงินเดือน']);
+  if (x.note) kv.push(['บันทึกเพิ่มเติม', esc(x.note)]);
+  const label = LEDGER_LABEL[x.type];
+  detailView(`${label} ${thaiDate(x.date)}`, kv, `#/record/${x.type}/${x.id}`, askDelete, `ลบรายการ${label}วันที่ ${thaiDate(x.date)} ใช่ไหม`, () => {
+    const next = clone(state); next.ledger = next.ledger.filter(y => y.id !== id);
+    if (persist(next, 'ลบแล้ว')) go('#/history');
+  }, `#/history/l/${x.id}`, '<p class="small muted" style="margin:0">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>');
 }
 
 function renderBalanceDetail(date, askDelete) {
@@ -540,9 +745,9 @@ function renderYearEndDetail(year, askDelete) {
     if (persist(next, 'ลบแล้ว')) go('#/history');
   }, `#/history/y/${year}`);
 }
-function detailView(title, kv, editHref, askDelete, delQ, onDelete, selfHref) {
+function detailView(title, kv, editHref, askDelete, delQ, onDelete, selfHref, extra = '') {
   view(`${pageHead(title, '#/history', 'ประวัติ')}
-  <main><section class="card"><dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd class="num" style="white-space:normal">${v}</dd>`).join('')}</dl></section>
+  <main><section class="card"><dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd class="num" style="white-space:normal">${v}</dd>`).join('')}</dl>${extra}</section>
   ${askDelete
     ? `<div class="warn-box" role="alert" tabindex="-1"><p>${delQ}</p><div class="btn-row"><button type="button" class="btn btn-danger" id="do-del">ลบ</button><a class="btn btn-soft" href="${selfHref}">ยกเลิก</a></div></div>`
     : `<div class="btn-row"><a class="btn btn-soft" href="${editHref}">แก้</a><a class="btn btn-danger" href="${selfHref}/delete">ลบ</a></div>`}
@@ -675,11 +880,15 @@ function render() {
     case 'record':
       if (parts[1] === 'balance') return renderBalance(parts[2] || null);
       if (parts[1] === 'yearend') { const q = new URLSearchParams(query || ''); return renderYearEnd(parts[2] ? +parts[2] : null, {}, {}, q.get('y') ? +q.get('y') : null); }
+      if (parts[1] === 'deposit') return renderDeposit(parts[2] || null);
+      if (parts[1] === 'plan') return renderPlan(parts[2] || null);
+      if (parts[1] === 'saving') return renderSaving(parts[2] || null);
       return renderRecordMenu();
     case 'history':
       if (parts[1] === 'b') return renderBalanceDetail(parts[2], parts[3] === 'delete');
       if (parts[1] === 'y') return renderYearEndDetail(+parts[2], parts[3] === 'delete');
-      return renderHistory();
+      if (parts[1] === 'l') return renderLedgerDetail(decodeURIComponent(parts[2] || ''), parts[3] === 'delete');
+      return renderHistory(new URLSearchParams(query || '').get('f'));
     case 'start': return state.records.length ? go('#/home') : renderStart();
     default: return renderHome();
   }

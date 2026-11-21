@@ -45,10 +45,30 @@ function checkData(d) {
     if (!isInt(e.year) || !isIso(e.date) || !isMoney(e.v) || !isMoney(e.pm) || !isMoney(e.pg)) return 'มียอดสิ้นปีที่ข้อมูลไม่ถูกต้อง';
     if (years.has(e.year)) return 'มียอดสิ้นปีของปีเดียวกันซ้ำ'; years.add(e.year);
   }
+  // สมุด (0.4.0): ตรวจทุกช่องตามประเภท — รูปแบบข้อมูลยังเป็น schema 1 (ช่องเหล่านี้กำหนดไว้ตั้งแต่ช่วง A)
+  //   deposit { id, type, date, a (สตางค์ > 0), note }
+  //   plan    { id, type, date, plan (ชื่อ), other? (พิมพ์เอง), mix? [{ plan, pct }] รวม 100, note }
+  //   saving  { id, type, date, rate (% เต็มจำนวน 0–100), note }
+  const ids = new Set(), keys = new Set();
   for (const x of d.ledger) {
-    if (!LEDGER_TYPES.includes(x.type) || !isIso(x.date)) return 'มีรายการในสมุดที่ข้อมูลไม่ถูกต้อง';
+    if (!x || !LEDGER_TYPES.includes(x.type) || !isIso(x.date) || typeof x.id !== 'string' || !x.id || !isText(x.note) || !ledgerFieldsOk(x))
+      return 'มีรายการในสมุดที่ข้อมูลไม่ถูกต้อง';
+    if (ids.has(x.id)) return 'มีรายการในสมุดที่รหัสซ้ำกัน'; ids.add(x.id);
+    const k = x.type + ' ' + x.date;
+    if (keys.has(k)) return 'มีรายการในสมุดประเภทเดียวกันวันที่ซ้ำกัน'; keys.add(k);
   }
   return null;
+}
+const isText = x => x == null || typeof x === 'string';
+function ledgerFieldsOk(x) {
+  if (x.type === 'deposit') return isMoney(x.a) && x.a > 0;
+  if (x.type === 'saving') return isInt(x.rate) && x.rate >= 0 && x.rate <= 100;
+  if (typeof x.plan !== 'string' || !x.plan.trim()) return false;
+  if (x.mix == null) return true;
+  if (!Array.isArray(x.mix) || !x.mix.length) return false;
+  let sum = 0;
+  for (const p of x.mix) { if (!p || typeof p.plan !== 'string' || !isInt(p.pct) || p.pct < 1 || p.pct > 100) return false; sum += p.pct; }
+  return sum === 100;
 }
 
 // ---------- อ่าน / เขียน ในเบราว์เซอร์ ----------

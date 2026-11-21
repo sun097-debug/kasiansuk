@@ -202,3 +202,35 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 .why summary { color: var(--primary); text-decoration: underline; cursor: pointer; font-size: 14px; min-height: 32px; display: inline-flex; align-items: center; list-style: none; }
 .why summary::-webkit-details-marker { display: none; }
 .why[open] summary { margin-bottom: 6px; }
+
+/* ---------- สมุดบันทึก 3 หน้า (0.4.0 — UX v1.2 หัวข้อ 5.6) ---------- */
+[hidden] { display: none !important; }
+:root { --paper: #FFFDF6; --paper-dot: #F0EADB; --spine: #B2DCC7; }
+.card.notebook {
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--paper-dot) 1px, transparent 1px);
+  background-size: 18px 18px;
+  border-left: 8px solid var(--spine);
+}
+.nb-note { margin: 0; font-size: 13px; background: var(--mint); color: var(--text-box); border-radius: 12px; padding: 8px 12px; }
+.tag-opt { font-size: 12px; font-weight: 400; color: var(--text-2); background: var(--mint); margin-left: 6px; }
+.tag-jot { color: var(--pink-text); background: var(--pink-bg); align-self: flex-start; }
+.nb-sum { gap: 6px; font-size: 14px; }
+.pct-in { display: flex; align-items: center; gap: 6px; }
+.pct-in input { max-width: 110px; }
+.mix { display: flex; flex-direction: column; gap: 10px; background: var(--card); border: 1.5px solid var(--mint-border); border-radius: 16px; padding: 12px; }
+.mix legend { padding: 0 4px; }
+.mix-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; }
+.mix-row label { font-size: 14px; }
+.mix-row .pct-in input { width: 80px; }
+.mix-row .err { grid-column: 1 / -1; }
+.mix-total { font-weight: 600; border-radius: 12px; padding: 10px 12px; background: var(--mint); color: var(--text-box); }
+.mix-total.ok { background: var(--up-bg); color: var(--up); }
+.mix-k { padding-left: 12px; }
+.recent { display: flex; flex-direction: column; gap: 10px; }
+
+/* ตัวกรองประวัติ */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips a { text-decoration: none; color: var(--text-2); background: var(--card); border: 1.5px solid var(--mint-border); border-radius: 999px; padding: 6px 12px; font-size: 13px; min-height: 36px; display: inline-flex; align-items: center; }
+.chips a[aria-current="true"] { background: var(--mint); color: var(--text); font-weight: 600; border-color: var(--primary); }
+.hist-type.lg { background: var(--pink-bg); color: var(--pink-text); }
