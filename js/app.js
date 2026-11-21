@@ -1,11 +1,11 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.3.0 (แก้ตามความเห็นซัน 21 พ.ย.) · ก่อนหน้า 0.2.0 (ช่วง A ของขั้น Build + แก้ตามที่ซันลองบน iPhone 20 พ.ย.)
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.3.1 (แก้ตามความเห็นซัน 21 พ.ย.) · ก่อนหน้า 0.2.0 (ช่วง A ของขั้น Build + แก้ตามที่ซันลองบน iPhone 20 พ.ย.)
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี, ประวัติ (ยอดเงิน + ยอดสิ้นปี),
 // ข้อมูลและสำรอง (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
 (function () {
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
 const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -277,7 +277,10 @@ function renderHome() {
         <div class="row sub"><span>${BOX.pm}</span><span class="num">${fmtMoney(yf.contributed.m)} บาท</span></div>
         <div class="row sub"><span>${BOX.pg}</span><span class="num">${fmtMoney(yf.contributed.g)} บาท</span></div>
       </div>
-      <p class="explain">ยอดเงิน${diff < 0 ? 'ลดลง' : 'เพิ่ม'}จากสิ้นปี ${be(Y - 1)} <span class="num">${fmtMoney(Math.abs(diff))}</span> บาท = เงินที่ส่งเข้าไป <span class="num">${fmtMoney(yf.contributed.total)}</span> + ${loss ? 'ขาดทุน' : 'กำไร'} <span class="num">${fmtMoney(p)}</span></p>
+      <details class="why"><summary>${loss ? 'ขาดทุนมาจากไหน?' : 'กำไรมาจากไหน?'}</summary>
+        <p class="explain">ยอดเงิน${diff < 0 ? 'ลดลง' : 'เพิ่ม'}จากสิ้นปี ${be(Y - 1)} <span class="num">${fmtMoney(Math.abs(diff))}</span> บาท = เงินที่ส่งเข้าไป <span class="num">${fmtMoney(yf.contributed.total)}</span> + ${loss ? 'ขาดทุน' : 'กำไร'} <span class="num">${fmtMoney(p)}</span></p>
+        <p class="small muted" style="margin:6px 0 0">ยอดเงินที่เพิ่มขึ้นไม่ได้เป็นกำไรทั้งหมด ส่วนหนึ่งคือเงินที่คุณและรัฐส่งเข้าไปเอง</p>
+      </details>
       ${r.principalSince ? `<span class="xsmall muted">เงินต้นอัปเดตล่าสุด ${thaiDate(r.principalSince)}</span>` : ''}`;
   }
 

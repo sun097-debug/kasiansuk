@@ -197,3 +197,8 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 .install p { margin: 0; font-size: 13px; color: var(--text-2); }
 .steps-box { background: var(--mint); border-radius: 14px; padding: 12px 14px; }
 .steps-box ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+
+/* "กำไรมาจากไหน?" แตะเพื่อเปิด (0.3.1) */
+.why summary { color: var(--primary); text-decoration: underline; cursor: pointer; font-size: 14px; min-height: 32px; display: inline-flex; align-items: center; list-style: none; }
+.why summary::-webkit-details-marker { display: none; }
+.why[open] summary { margin-bottom: 6px; }
