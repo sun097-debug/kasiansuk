@@ -1,11 +1,11 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.3.1 (แก้ตามความเห็นซัน 21 พ.ย.) · ก่อนหน้า 0.2.0 (ช่วง A ของขั้น Build + แก้ตามที่ซันลองบน iPhone 20 พ.ย.)
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.3.2 (ชื่อแท็บ "สำรองข้อมูล" 21 พ.ย.) · ก่อนหน้า 0.3.1, 0.2.0
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี, ประวัติ (ยอดเงิน + ยอดสิ้นปี),
-// ข้อมูลและสำรอง (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
+// สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
 (function () {
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
 const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -150,7 +150,7 @@ function tabbar(cur) {
     ${item('home', '#/home', '<path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path>', 'หน้าหลัก')}
     ${item('record', '#/record', '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"></path>', 'บันทึก')}
     ${item('history', '#/history', '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>', 'ประวัติ')}
-    ${item('data', '#/data', '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path>', 'ข้อมูลและสำรอง')}
+    ${item('data', '#/data', '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path>', 'สำรองข้อมูล')}
   </div></nav>`;
 }
 function pageHead(title, back, backLabel, sub, notebook) {
@@ -551,7 +551,7 @@ function detailView(title, kv, editHref, askDelete, delQ, onDelete, selfHref) {
 }
 
 // =====================================================================
-// ข้อมูลและสำรอง (F-06, F-08, AC-20–AC-22, AC-24)
+// สำรองข้อมูล (F-06, F-08, AC-20–AC-22, AC-24)
 // =====================================================================
 function backupFileName() { const d = today(); return `kasiansuk-backup-${be(+d.slice(0, 4))}-${d.slice(5)}.json`; }
 function markBackedUp() {
@@ -561,7 +561,7 @@ function markBackedUp() {
 function renderData() {
   const has = !!state;
   const m = has ? state.meta : null;
-  view(`${pageHead('ข้อมูลและสำรอง', has ? null : '#/start', 'เริ่มใช้')}
+  view(`${pageHead('สำรองข้อมูล', has ? null : '#/start', 'เริ่มใช้')}
   <main>
     ${loadError ? `<div class="alert" role="alert">อ่านข้อมูลเดิมในเครื่องไม่ได้: ${esc(loadError)} — แอพจะไม่เขียนทับข้อมูลเดิมเอง ถ้ามีไฟล์สำรอง กู้คืนได้ด้านล่าง</div>` : ''}
     ${has ? `<section class="card">
@@ -640,7 +640,7 @@ function downloadBackup() {
 function renderRestore() {
   if (!pendingRestore) return go('#/data');
   const s = pendingRestore.summary;
-  view(`${pageHead('กู้คืนจากไฟล์สำรอง', '#/data', 'ข้อมูลและสำรอง')}
+  view(`${pageHead('กู้คืนจากไฟล์สำรอง', '#/data', 'สำรองข้อมูล')}
   <main><section class="card">
     <h2 class="card-title">ไฟล์นี้มี</h2>
     <dl class="kv"><dt>จำนวนปี</dt><dd>${s.years} ปี</dd><dt>ยอดเงิน</dt><dd>${s.records} รายการ</dd><dt>ยอดสิ้นปี</dt><dd>${s.yearEnds} รายการ</dd>
