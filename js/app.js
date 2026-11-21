@@ -1,11 +1,11 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.2.0 (ช่วง A ของขั้น Build + แก้ตามที่ซันลองบน iPhone 20 พ.ย.)
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.3.0 (แก้ตามความเห็นซัน 21 พ.ย.) · ก่อนหน้า 0.2.0 (ช่วง A ของขั้น Build + แก้ตามที่ซันลองบน iPhone 20 พ.ย.)
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี, ประวัติ (ยอดเงิน + ยอดสิ้นปี),
 // ข้อมูลและสำรอง (สำรอง / กู้คืน / ข้อความสำคัญ) — สมุด 3 หน้า (F-13–F-15) และ F-17 ทำในช่วง B
 (function () {
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
-const { thaiDate, thaiDateShort, todayIso, moneyInput, MONTHS } = Forms;
-const VERSION = '0.2.0';
+const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
+const VERSION = '0.3.0';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -136,7 +136,7 @@ function dateFields(id, iso, err, legend, hint) {
 }
 function moneyField(name, label, value, err, hint, opt) {
   return `<div class="field"><label for="f-${name}">${label}${opt ? ` <span class="opt">${opt}</span>` : ''}</label>
-    <input type="text" id="f-${name}" name="${name}" inputmode="decimal" autocomplete="off" value="${esc(value)}"${err ? ' aria-invalid="true" aria-describedby="e-' + name + '"' : ''}>
+    <input type="text" id="f-${name}" name="${name}" inputmode="decimal" autocomplete="off" data-money value="${esc(groupDigits(value))}"${err ? ' aria-invalid="true" aria-describedby="e-' + name + '"' : ''}>
     ${hint ? `<span class="hint">${hint}</span>` : ''}${err ? `<span class="err" id="e-${name}">${esc(err)}</span>` : ''}</div>`;
 }
 const readForm = form => Object.fromEntries(new FormData(form).entries());
@@ -157,9 +157,22 @@ function pageHead(title, back, backLabel, sub, notebook) {
   return `<header class="page-head">${back ? `<a class="back" href="${back}">${BACK_ICON}${backLabel}</a>` : ''}
     <div class="brand">${notebook ? LOGO(34, 36, false) : ''}<h1>${title}</h1></div>${sub ? `<span class="small muted">${sub}</span>` : ''}</header>`;
 }
+// ใส่ลูกน้ำระหว่างพิมพ์ โดยให้เคอร์เซอร์อยู่ตำแหน่งเดิม (นับตัวเลขก่อนเคอร์เซอร์)
+function bindMoneyInputs() {
+  app.querySelectorAll('input[data-money]').forEach(el => el.addEventListener('input', () => {
+    const before = el.value, pos = el.selectionStart == null ? before.length : el.selectionStart;
+    const keep = before.slice(0, pos).replace(/[^\d.]/g, '').length;
+    const out = groupDigits(before);
+    if (out === before) return;
+    el.value = out;
+    let n = 0, p = 0; while (p < out.length && n < keep) { if (/[\d.]/.test(out[p])) n++; p++; }
+    try { el.setSelectionRange(p, p); } catch (e) { /* บางเครื่องไม่รองรับ */ }
+  }));
+}
 function view(html, tab) {
   closeSheet();
   app.innerHTML = html + (tab ? tabbar(tab) : '');
+  bindMoneyInputs();
   app.classList.toggle('has-nav', !!tab);
   document.body.classList.toggle('has-nav', !!tab);
   window.scrollTo(0, 0);
@@ -551,7 +564,7 @@ function renderData() {
     ${has ? `<section class="card">
       <h2 class="card-title">สำรองข้อมูล</h2>
       <p class="small muted" style="margin:0">${m.lastBackupAt ? `สำรองล่าสุด ${thaiDate(m.lastBackupAt.slice(0, 10))}` : 'ยังไม่เคยสำรอง'}</p>
-      <p class="small" style="margin:0">ไฟล์เดียวครบทุกปี เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง เช่น iCloud Drive, Google Drive หรือส่งเข้า LINE ของตัวเอง</p>
+      <p class="small" style="margin:0">กดแต่ละครั้งได้ไฟล์ใหม่ที่มีข้อมูลครบทุกปี เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง เช่น iCloud Drive หรือ Google Drive</p>
       <button type="button" class="btn btn-primary" id="do-backup">สำรองข้อมูล</button>
     </section>` : ''}
     <section class="card">
@@ -599,10 +612,10 @@ function backupFlow() {
         ? '<li>ถ้าเห็นหน้ารูปไฟล์พื้นดำ แตะ <b>More…</b> (หรือปุ่มแชร์)</li><li>แตะ <b>บันทึกไปยังไฟล์</b> (Save to Files) แล้วเลือกที่เก็บ</li>'
         : '<li>ไฟล์จะถูกบันทึกไว้ในโฟลเดอร์ดาวน์โหลด</li><li>ย้ายไฟล์ไปเก็บในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง</li>');
   openSheet(`<h2>สำรองข้อมูล</h2>
-    <p style="margin:0">แอพจะสร้างไฟล์สำรองไฟล์เดียว ครบทุกปี ชื่อ <span class="num">${esc(backupFileName())}</span></p>
+    <p style="margin:0">แอพจะสร้างไฟล์ใหม่ชื่อ <span class="num">${esc(backupFileName())}</span> — ในไฟล์มีข้อมูลทุกรายการ ทุกปี</p>
     <div class="steps-box"><ol>${steps}</ol></div>
-    <p class="small muted" style="margin:0">เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง · ไฟล์นี้มีตัวเลขพอร์ตของคุณ อย่าส่งให้คนอื่น</p>
-    <div class="btn-row"><button type="button" class="btn btn-primary" id="bk-go">ไปต่อ</button><button type="button" class="btn btn-soft" data-close>ยกเลิก</button></div>`, sh => {
+    <p class="small muted" style="margin:0">กดสำรองแต่ละครั้งได้ไฟล์ใหม่ เก็บไฟล์ล่าสุดไว้ก็พอ (ไฟล์เก่าลบได้) · ไฟล์นี้มีตัวเลขพอร์ตของคุณ อย่าส่งให้คนอื่น</p>
+    <div class="btn-row"><button type="button" class="btn btn-primary" id="bk-go">บันทึกไฟล์สำรอง</button><button type="button" class="btn btn-soft" data-close>ยกเลิก</button></div>`, sh => {
     sh.querySelector('#bk-go').addEventListener('click', async () => {
       if (share) {
         try { await navigator.share({ files: [backupFile()] }); closeSheet(); toast('สำรองแล้ว'); markBackedUp(); }

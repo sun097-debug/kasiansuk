@@ -26,8 +26,19 @@ function parseMoney(text) {
   if (whole.length > 12) return { ok: false, why: 'ตัวเลขยาวเกินไป' };
   return { ok: true, value: Number(whole) * 100 + Number((frac + '00').slice(0, 2)) };
 }
-// สตางค์ → ข้อความในช่องกรอก (ไม่มีคอมมา เพื่อแก้ง่าย)
+// สตางค์ → ข้อความในช่องกรอก (ไม่มีคอมมา — หน้าจอใส่คอมมาให้ด้วย groupDigits)
 const moneyInput = s => (s == null ? '' : (Math.floor(s / 100) + (s % 100 ? '.' + pad(s % 100) : '')));
+
+// ใส่ลูกน้ำคั่นหลักพันระหว่างพิมพ์ (0.3.0): '1234567.5' → '1,234,567.5'
+// เก็บเฉพาะตัวเลขกับจุดทศนิยมจุดแรก (ตัวอักษร/เครื่องหมายลบพิมพ์ไม่ติด)
+function groupDigits(text) {
+  let raw = String(text == null ? '' : text).replace(/[^\d.]/g, '');
+  const i = raw.indexOf('.');
+  if (i >= 0) raw = raw.slice(0, i + 1) + raw.slice(i + 1).replace(/\./g, '');
+  const [w, f] = raw.split('.');
+  const whole = w.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return f !== undefined ? whole + '.' + f : whole;
+}
 
 // วัน / เดือน / ปี พ.ศ. → 'YYYY-MM-DD' (ค.ศ.)
 function checkDate(d, m, yBE, today) {
@@ -100,5 +111,5 @@ function checkYearEnd(state, f, { editingYear = null, today }) {
            allZero: ye.v === 0 && ye.pm === 0 && ye.pg === 0 };      // ถามยืนยันสมาชิกใหม่ 1 ครั้ง
 }
 
-return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, checkDate, checkBalance, principalQuestion, checkYearEnd };
+return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, checkYearEnd };
 });
