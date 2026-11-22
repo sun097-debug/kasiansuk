@@ -205,7 +205,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 
 /* ---------- สมุดบันทึก 3 หน้า (0.4.0 — UX v1.2 หัวข้อ 5.6) ---------- */
 [hidden] { display: none !important; }
-:root { --paper: #FFFDF6; --paper-dot: #E2D6BA; --spine: #B2DCC7; }  /* 0.4.1 ลายจุดเข้มขึ้น (ซันเลือกระดับ A 22 พ.ย.) */
+:root { --paper: #FFFDF6; --paper-dot: #E9E0CB; --spine: #B2DCC7; }  /* 0.4.2 ลายจุดระดับกลาง ระหว่างแบบแรก (#F0EADB 1px) กับระดับ A (#E2D6BA) — ซัน 22 พ.ย.: A เข้มไป รบกวนสายตา */
 .card.notebook {
   background-color: var(--paper);
   background-image: radial-gradient(var(--paper-dot) 1.5px, transparent 1.5px);
