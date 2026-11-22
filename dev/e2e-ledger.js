@@ -163,6 +163,13 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   await p3.goto(URL + '#/record/plan'); await p3.selectOption('#f-plan', 'แผนผสมสัดส่วนเอง'); await p3.screenshot({ path: SHOTS + '/L08-plan-320.png', fullPage: true });
   await p3.goto(URL + '#/history'); await p3.screenshot({ path: SHOTS + '/L09-history-320.png', fullPage: true });
 
+  // ---------- 10b. คำช่วยหาข้อมูลของสมุด 3 หน้า (0.4.1) ----------
+  for (const [k, want] of [['deposit', 'รายการเคลื่อนไหวบัญชี'], ['plan', 'แผนการลงทุน'], ['saving', 'เปลี่ยนแปลงอัตราการออมเพิ่ม']]) {
+    await page.goto(URL + '#/record/' + k); await page.click('[data-help]'); await page.waitForSelector('#sheet');
+    const t = await page.innerText('#sheet'); await page.click('#sheet [data-close]');
+    check(`คำช่วยหาข้อมูลหน้า ${k} บอกเส้นทาง "${want}"`, t.includes(want) && (k === 'deposit' || t.includes('ประวัติ')));
+  }
+
   // ---------- 11. กล่องแนะนำแบบไอคอน: ไม่พูดถึง Safari กับคนที่ไม่ได้ใช้ Safari (0.4.1) ----------
   const UA = {
     safari: devices['iPhone 13'].userAgent,

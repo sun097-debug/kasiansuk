@@ -118,6 +118,17 @@ const HELP = {
     <ol><li>My GPF → <b>My Account</b> → <b>ยอดเงิน กบข.</b></li>
     <li>เลื่อนลง แตะ <b>รายการเคลื่อนไหวบัญชี</b></li>
     <li>ใส่ยอดรวมของบรรทัด <b>"เงินนำส่ง"</b> — ไม่ต้องแยกเงินสะสม / เงินสมทบ / เงินสะสมส่วนเพิ่ม / เงินชดเชย</li></ol>`,
+  // 0.4.1: เส้นทางจากซัน (ผู้ใช้ยืนยันแล้ว 22 พ.ย. 2569 ดูใน My GPF)
+  plan: `<h2>การเปลี่ยนแผนดูได้จากไหน</h2>
+    <ol><li>My GPF → <b>My Account</b> → <b>ยอดเงิน กบข.</b></li>
+    <li>เลื่อนลง แตะ <b>แผนการลงทุน</b></li>
+    <li>แตะ <b>ประวัติ</b> (มุมขวาบน)</li>
+    <li>ใช้วันที่ตรง <b>"ได้มูลค่าหน่วยลงทุนวันที่"</b> และชื่อแผน (แผนผสมสัดส่วนเอง: ใส่ % ของแต่ละแผนตามที่แสดง)</li></ol>`,
+  saving: `<h2>การออมเพิ่มดูได้จากไหน</h2>
+    <ol><li>My GPF → <b>My Account</b> → <b>ยอดเงิน กบข.</b></li>
+    <li>เลื่อนลง แตะ <b>เปลี่ยนแปลงอัตราการออมเพิ่ม</b></li>
+    <li>แตะ <b>ประวัติ</b> (มุมขวาบน)</li>
+    <li>ใช้วันที่ตรง <b>"วันที่มีผล"</b> และอัตรา %</li></ol>`,
   pct: `<h2>% ของแอพต่างจาก My GPF อย่างไร</h2>
     <p style="margin:0">ของแอพ = ผลตอบแทนตั้งแต่ 1 ม.ค. ถึงวันที่ข้อมูล</p>
     <p style="margin:0">ของ My GPF = อัตราเฉลี่ยต่อปีหลายปี อัปเดตสัปดาห์ละครั้ง ตัวเลขจึงไม่เท่ากัน</p>
@@ -594,6 +605,7 @@ function renderPlan(editId, errors = {}, extra = {}) {
       <span class="err" id="mix-err-${i}"${errors['mix-' + i] ? '' : ' hidden'}>${esc(errors['mix-' + i] || '')}</span></div>`).join('');
   ledgerPage('plan', editing, `
     <p class="nb-note">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
+    <button type="button" class="link-btn" data-help="plan">ดูได้จากไหนใน My GPF</button>
     <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
     <form id="lg-form" novalidate>
       ${dateFields('date', dateIso, errors.date, 'ได้มูลค่าหน่วยลงทุนวันที่', 'ใช้วันที่ตามที่ My GPF แสดง')}
@@ -640,6 +652,7 @@ function renderSaving(editId, errors = {}, extra = {}) {
   const dateIso = isoFromDraft(draft) || (editing ? editing.date : today());
   ledgerPage('saving', editing, `
     <p class="nb-note">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
+    <button type="button" class="link-btn" data-help="saving">ดูได้จากไหนใน My GPF</button>
     <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
     <form id="lg-form" novalidate>
       ${dateFields('date', dateIso, errors.date, 'วันที่มีผล', 'ใช้วันที่ตามที่ My GPF แสดง')}
