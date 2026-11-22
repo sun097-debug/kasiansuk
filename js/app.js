@@ -33,21 +33,23 @@ const LOGO = (w = 42, h = 44, label = true) => `<svg width="${w}" height="${h}" 
 // พระอาทิตย์ + เมฆฟ้า 2 ก้อน (แทนใบไม้ — ซันยืนยัน 20 พ.ย. 2569)
 const cloud = (x, y, k, c) => `<g transform="translate(${x} ${y}) scale(${k})" fill="${c}"><circle cx="10" cy="10" r="8"></circle><circle cx="20" cy="7" r="10"></circle><circle cx="30" cy="11" r="7"></circle><rect x="4" y="10" width="30" height="8" rx="4"></rect></g>`;
 // ---------- ภาพหัวหน้าหลักตามฤดูของไทย (0.4.2 — ซันเสนอ 22 พ.ย.: ลูกเล่นให้ผู้ใช้รู้สึกสนุก มีความสุข) ----------
-// ช่วงฤดูโดยประมาณตามสถิติทางการ: ร้อน กลาง ก.พ.–กลาง พ.ค. / ฝน กลาง พ.ค.–กลาง ต.ค. / หนาว กลาง ต.ค.–กลาง ก.พ.
-// วันจริงที่กรมอุตุฯ ประกาศขยับทุกปี — เป็นภาพตกแต่งเท่านั้น ดูจากวันที่ในเครื่อง ไม่ต่อเน็ต ไม่แตะข้อมูล
-// ดูฤดูอื่นเพื่อทดสอบ: เปิดที่อยู่ ?season=hot / rain / snow / mist
+// ฤดูไทยเปลี่ยนราวกลางเดือน ก.พ. / พ.ค. / ต.ค. (สถิติทางการ — วันจริงขยับทุกปี)
+// ซันเสนอ 22 พ.ย.: เดือนรอยต่อ (ก.พ. พ.ค. ต.ค.) ใช้ภาพแรก "พระอาทิตย์ + เมฆฟ้า" / เดือนอื่นตามฤดู / เปลี่ยนวันที่ 1 ของเดือน
+//   ร้อน มี.ค.–เม.ย. · ฝน มิ.ย.–ก.ย. · หนาว พ.ย.–ม.ค.
+// เป็นภาพตกแต่งเท่านั้น ดูจากวันที่ในเครื่อง ไม่ต่อเน็ต ไม่แตะข้อมูล
+// ดูแบบอื่นเพื่อทดสอบ: เปิดที่อยู่ ?season=sky / hot / rain / mist / snow
 const WINTER = 'mist';   // หน้าหนาว: หมอกเย็น (ซันเลือกแบบ ข. 22 พ.ย.) — แบบหิมะ 'snow' เก็บไว้ดูด้วย ?season=snow
-function seasonOf(iso) {
-  const md = +iso.slice(5, 7) * 100 + +iso.slice(8, 10);
-  return md >= 216 && md < 516 ? 'hot' : md >= 516 && md < 1016 ? 'rain' : WINTER;
-}
+const SEASON_BY_MONTH = ['', WINTER, 'sky', 'hot', 'hot', 'sky', 'rain', 'rain', 'rain', 'rain', 'sky', WINTER, WINTER];   // ม.ค.–ธ.ค.
+const seasonOf = iso => SEASON_BY_MONTH[+iso.slice(5, 7)];
 function season() {
-  try { const q = new URLSearchParams(location.search).get('season'); if (['hot', 'rain', 'snow', 'mist'].includes(q)) return q; } catch (e) { /* ไม่เป็นไร */ }
+  try { const q = new URLSearchParams(location.search).get('season'); if (['sky', 'hot', 'rain', 'snow', 'mist'].includes(q)) return q; } catch (e) { /* ไม่เป็นไร */ }
   return seasonOf(todayIso());
 }
 const rays = (cx, cy, r, c) => Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4, f = n => n.toFixed(1);
   return `<line x1="${f(cx + Math.cos(a) * (r + 3))}" y1="${f(cy + Math.sin(a) * (r + 3))}" x2="${f(cx + Math.cos(a) * (r + 7))}" y2="${f(cy + Math.sin(a) * (r + 7))}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"></line>`; }).join('');
 const ART = {
+  // เดือนรอยต่อ: ภาพแรก พระอาทิตย์ + เมฆฟ้า 2 ก้อน (ซันยืนยัน 20 พ.ย.)
+  sky: `<circle cx="46" cy="22" r="17" fill="#FFD9C4"></circle>${cloud(2, 30, 0.95, '#CFE6F5')}${cloud(42, 36, 0.7, '#BFDDF2')}`,
   // หน้าร้อน: แดดจ้า มีรัศมี + เมฆเล็ก
   hot: `${rays(44, 22, 14, '#FFC9AE')}<circle cx="44" cy="22" r="14" fill="#FFC9AE"></circle>${cloud(0, 34, 0.75, '#CFE6F5')}`,
   // หน้าฝน: เมฆฝน + เม็ดฝน + พระอาทิตย์แง้ม (ไม่ให้ดูหม่น)
