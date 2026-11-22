@@ -1,4 +1,4 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่ + ภาพหัวหน้าหลักตามฤดู + ต้นอ่อนข้างหัวกราฟ) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.3 (คำถามเงินต้นไม่รีบถาม) · 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่ + ภาพตามฤดู + ต้นอ่อน) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ + สรุปสมุด), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี,
 // จดเงินนำส่ง / จดการเปลี่ยนแผน / จดการออมเพิ่ม (ไม่ใช้คำนวณ), ประวัติ (ทุกประเภท + ตัวกรอง),
 // สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ)
@@ -6,7 +6,7 @@
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
 const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
-const VERSION = '0.4.2';
+const VERSION = '0.4.3';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -457,7 +457,8 @@ function renderBalance(editDate, errors = {}, extra = {}) {
       ${dateFields('date', dateIso, errors.date, 'วันที่ข้อมูล', 'ใช้วันที่ตรง "ยอดเงิน ณ วันที่" ไม่ใช่วันที่กรอก')}
       ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/balance/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
       ${moneyField('v', 'ยอดเงิน (บาท)', dr.v, errors.v, 'ตัวเลข "รวมเงินทั้งสิ้น"')}
-      ${prefillFrom ? `<p class="prefill" style="margin:0">เติมเงินต้นจาก ${thaiDate(prefillFrom)} ไว้ให้ ถ้าใน My GPF เปลี่ยนแล้ว แก้ตรงนี้</p>` : ''}
+      ${prefillFrom ? `<p class="prefill" id="prefill-note" style="margin:0">เติมเงินต้นจาก ${thaiDate(prefillFrom)} ไว้ให้ ถ้าใน My GPF เปลี่ยนแล้ว แก้ตรงนี้</p>` : ''}
+      ${editing ? '' : '<p class="note-line" id="principal-hint" role="status" hidden></p>'}
       ${moneyField('pm', `${BOX.pm} · เงินต้น`, dr.pm, errors.pm, 'กรอกเฉพาะบรรทัดเงินต้น ไม่ใช่ผลประโยชน์')}
       ${moneyField('pg', `${BOX.pg} · เงินต้น`, dr.pg, errors.pg)}
       ${extra.drop ? `<div class="warn-box" role="alert" tabindex="-1"><p>เงินต้นรวม ${fmtMoney(extra.drop.now)} บาท น้อยกว่าครั้งก่อน (${thaiDate(extra.drop.vs)}: ${fmtMoney(extra.drop.prev)} บาท) ตรวจกับ My GPF อีกครั้ง ถ้าถูกแล้วกดยืนยัน</p>
@@ -468,13 +469,25 @@ function renderBalance(editDate, errors = {}, extra = {}) {
     </form></section></main>`, 'record');
   bindHelp();
   const form = app.querySelector('#bal-form');
+  // 0.4.3: กล่องเตือนเงินต้นในฟอร์ม (ไม่เด้ง) — อัปเดตเมื่อเปลี่ยนวันที่หรือเงินต้น
+  const hintBox = form.querySelector('#principal-hint');
+  const updateHint = () => {
+    if (!hintBox) return;
+    const f = readForm(form), iso = isoFromDraft(f);
+    const a = Forms.parseMoney(f.pm), b = Forms.parseMoney(f.pg);
+    const h = a.ok && b.ok ? Forms.principalHint(state, iso, a.value, b.value) : null;
+    hintBox.hidden = !h;
+    if (h) hintBox.textContent = `เงินต้นนี้เท่ากับตั้งแต่ ${thaiDate(h.sameSince)} — รอบเงินเดือนล่าสุดน่าจะเปลี่ยนแล้ว ตรวจกับ My GPF ก่อนบันทึก`;
+    const pn = form.querySelector('#prefill-note'); if (pn) pn.hidden = !!h;
+  };
+  if (hintBox) { form.querySelectorAll('select, #f-pm, #f-pg').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', updateHint)); updateHint(); }
   const submit = (confirmDrop) => {
     const f = readForm(form); f._prefill = prefillFrom; draft = f;
     const r = Forms.checkBalance(state, f, { editing: editing ? editing.date : null, today: today() });
     if (Object.keys(r.errors).length) { renderBalance(editDate, r.errors, { duplicateOf: r.duplicateOf }); focusFirstError(); return; }
     if (r.principalDrop && !confirmDrop) { renderBalance(editDate, {}, { drop: r.principalDrop }); focusFirstError(); return; }
     const q = Forms.principalQuestion(state, r.rec, editing ? editing.date : null);
-    if (q) return askPrincipal(q, () => saveBalance(r.rec, editing));
+    if (q) return askPrincipal(q, () => saveBalance(r.rec, editing, Forms.nextPayDay(r.rec.date)));
     saveBalance(r.rec, editing);
   };
   form.addEventListener('submit', e => { e.preventDefault(); submit(false); });
@@ -483,15 +496,16 @@ function renderBalance(editDate, errors = {}, extra = {}) {
 // F-09: ถามตอนบันทึกยอดใหม่ เมื่อเงินต้นไม่ทันสมัย — ปุ่ม "แก้เงินต้น" / "ไว้ทีหลัง"
 function askPrincipal(q, later) {
   openSheet(`<h2>เงินต้นเปลี่ยนแล้วหรือยัง</h2>
-    <p style="margin:0">เงินต้นไม่เปลี่ยนตั้งแต่ ${thaiDate(q.sameSince)} เงินนำส่งรอบล่าสุดน่าจะเข้าแล้ว</p>
-    <p class="small muted" style="margin:0">ถ้ายังไม่แก้ กำไรปีนี้อาจสูงเกินจริง</p>
+    <p style="margin:0">เงินต้นไม่เปลี่ยนตั้งแต่ ${thaiDate(q.sameSince)} เงินนำส่งน่าจะเข้าแล้ว${q.rounds ? ` ${q.rounds} รอบ` : ''}</p>
+    <p class="small muted" style="margin:0">ถ้ายังไม่แก้ กำไรปีนี้อาจสูงเกินจริง · กด "ไว้ทีหลัง" แล้วจะไม่ถามอีกจนถึงรอบเงินเดือนถัดไป</p>
     <div class="btn-row"><button type="button" class="btn btn-primary" id="q-fix">แก้เงินต้น</button><button type="button" class="btn btn-soft" id="q-later">ไว้ทีหลัง</button></div>`, sh => {
     sh.querySelector('#q-fix').addEventListener('click', () => { closeSheet(); const el = document.getElementById('f-pm'); if (el) { el.focus(); el.select(); } });
     sh.querySelector('#q-later').addEventListener('click', () => { closeSheet(); later(); });
   });
 }
-function saveBalance(rec, editing) {
+function saveBalance(rec, editing, snoozeUntil) {
   const next = clone(state);
+  if (snoozeUntil) next.meta.principalSnoozeUntil = snoozeUntil;   // กด "ไว้ทีหลัง" → ไม่ถามอีกจนถึงวันที่ 25 รอบถัดไป
   if (editing) next.records = next.records.filter(r => r.date !== editing.date);
   next.records.push(rec); changed(next);
   if (persist(next, editing ? 'แก้แล้ว ตัวเลขทุกจุดคำนวณใหม่แล้ว' : 'บันทึกแล้ว')) { draft = null; go(editing ? `#/history/b/${rec.date}` : '#/home'); }

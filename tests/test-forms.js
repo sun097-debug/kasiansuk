@@ -44,9 +44,21 @@ eq('F02', 'พ.ศ. → ค.ศ.', F.checkDate('29', '2', '2567', TODAY).iso, '2
 { const r = F.checkBalance(base(), form({ v: '', d: '31', m: '11' }), { today: TODAY });
   eq('F03', 'หลายช่องผิดพร้อมกัน → บอกทุกช่อง', Object.keys(r.errors).sort(), ['date', 'v']); }
 
-// F04 คำถามเงินต้น F-09 (เงื่อนไข C-5)
+// F04 คำถามเงินต้น F-09 (0.4.3 ซันตัดสิน 22 พ.ย.: พลาด 1 รอบ → กล่องเตือนในฟอร์ม ไม่เด้ง / พลาด 2 รอบขึ้นไป → ถาม ไม่เกินรอบละครั้ง)
 { const st = base(); const r = F.checkBalance(st, form({ pm: '320250', pg: '320250' }), { today: TODAY });
-  eq('F04', 'บันทึกยอดใหม่ 15 พ.ย. เงินต้นเท่า 15 ต.ค. → ถาม', F.principalQuestion(st, r.rec, null), { sameSince: '2026-10-15', months: 1 }); }
+  eq('F04', 'บันทึกยอดใหม่ 15 พ.ย. เงินต้นเท่า 15 ต.ค. (พลาด 1 รอบ) → ไม่เด้งถาม', F.principalQuestion(st, r.rec, null), null);
+  eq('F04', '… แต่ขึ้นกล่องเตือนในฟอร์ม', F.principalHint(st, '2026-11-15', b(320250), b(320250)), { sameSince: '2026-10-15', rounds: 1 }); }
+{ const st = base(); const rec = { date: '2026-12-15', v: b(950000), pm: b(320250), pg: b(320250), note: '' };
+  eq('F04', '15 ธ.ค. เงินต้นยังเท่า 15 ต.ค. (พลาด 2 รอบ: 25 ต.ค., 25 พ.ย.) → ถาม', F.principalQuestion(st, rec, null), { sameSince: '2026-10-15', months: 2, rounds: 2 });
+  const snoozed = Object.assign(base(), { meta: { principalSnoozeUntil: F.nextPayDay('2026-12-15') } });
+  eq('F04', 'กด "ไว้ทีหลัง" 15 ธ.ค. → ไม่ถามจนถึง 25 ธ.ค.', [F.nextPayDay('2026-12-15'), F.principalQuestion(snoozed, Object.assign({}, rec, { date: '2026-12-20' }), null)], ['2026-12-25', null]);
+  const q = F.principalQuestion(snoozed, Object.assign({}, rec, { date: '2026-12-26' }), null);
+  eq('F04', '… 26 ธ.ค. (รอบใหม่) ยังไม่แก้ → ถามอีกครั้ง (นับรอบถึง 25 พ.ย. ตาม C-5 = 2 รอบ)', q && q.rounds, 2); }
+{ const st = base();
+  eq('F04', 'กล่องเตือนในฟอร์ม: เงินต้นใหม่ (แก้แล้ว) → ไม่ขึ้น', F.principalHint(st, '2026-11-15', b(322500), b(322500)), null);
+  eq('F04', 'กล่องเตือนในฟอร์ม: บันทึก 20 ต.ค. (ยังไม่พลาดรอบ) → ไม่ขึ้น', F.principalHint(st, '2026-10-20', b(320250), b(320250)), null);
+  eq('F04', 'นับรอบ: แก้ 15 ส.ค. → 20 ก.พ. = 6 รอบ / แก้ 26 ต.ค. → 20 พ.ย. = 0 รอบ', [F.missedRounds('2026-08-15', '2027-02-20'), F.missedRounds('2026-10-26', '2026-11-20')], [6, 0]);
+  eq('F04', 'วันที่ 25 รอบถัดไป: 24 พ.ย. → 25 พ.ย. / 25 พ.ย. → 25 ธ.ค. / 26 ธ.ค. → 25 ม.ค.', [F.nextPayDay('2026-11-24'), F.nextPayDay('2026-11-25'), F.nextPayDay('2026-12-26')], ['2026-11-25', '2026-12-25', '2027-01-25']); }
 { const st = base(); const r = F.checkBalance(st, form({}), { today: TODAY });
   eq('F04', 'แก้เงินต้นแล้ว → ไม่ถาม', F.principalQuestion(st, r.rec, null), null); }
 { const st = base(); const r = F.checkBalance(st, form({ pm: '320250', pg: '320250' }), { today: TODAY });

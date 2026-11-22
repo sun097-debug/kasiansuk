@@ -19,7 +19,8 @@ function emptyState(nowIso) {
     yearEnds: [],    // ยอดสิ้นปี:  { year, date, v, pm, pg }
     ledger: [],      // สมุด:       { id, type, date, ... }  ไม่ใช้คำนวณ
     meta: { createdAt: nowIso || null, lastBackupAt: null, changesSinceBackup: 0,
-            bannerDismissedAt: null, bannerDismissedChanges: 0 },
+            bannerDismissedAt: null, bannerDismissedChanges: 0,
+            principalSnoozeUntil: null },   // 0.4.3: กด "ไว้ทีหลัง" ที่คำถามเงินต้น → ไม่ถามจนถึงวันที่นี้
   };
 }
 

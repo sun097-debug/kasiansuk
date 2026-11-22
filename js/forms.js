@@ -87,13 +87,41 @@ function checkBalance(state, f, { editing = null, today }) {
   return { errors: {}, rec, principalDrop };
 }
 
-// F-09 (Calculation v1.0 หัวข้อ 5.2): ถามเฉพาะตอนบันทึกยอดใหม่ ที่จะเป็นรายการล่าสุด และเงินต้นไม่ทันสมัย
+// ---------- คำถามเงินต้น F-09 (0.4.3 — ซันตัดสิน 22 พ.ย.: ไม่รีบถาม ไม่ถามทุกวัน) ----------
+// "รอบที่พลาด" = จำนวนวันที่ 25 ที่ผ่านไปหลังเงินต้นเปลี่ยนครั้งล่าสุด นับถึงวันที่ 25 ของเดือนก่อนรายการ (ตาม C-5)
+//   0 = ทันสมัย / 1 = พลาด 1 รอบ (ป้าย "อาจสูงเกินจริง" + กล่องเตือนในฟอร์ม ไม่เด้งถาม) / 2 ขึ้นไป = เด้งถาม ไม่เกินรอบละ 1 ครั้ง
+const pad2 = n => String(n).padStart(2, '0');
+function missedRounds(changedOn, recDate) {
+  let [y, m] = recDate.split('-').map(Number), n = 0;
+  for (;;) { m--; if (m === 0) { m = 12; y--; } if (`${y}-${pad2(m)}-${pad2(Calc.PAY_START)}` <= changedOn || n > 1200) return n; n++; }
+}
+// วันที่ 25 ของรอบถัดไป — กด "ไว้ทีหลัง" แล้วไม่ถามอีกจนถึงวันนี้
+function nextPayDay(iso) {
+  let [y, m, d] = iso.split('-').map(Number);
+  if (d >= Calc.PAY_START) { m++; if (m === 13) { m = 1; y++; } }
+  return `${y}-${pad2(m)}-${pad2(Calc.PAY_START)}`;
+}
+// ถามเฉพาะตอนบันทึกยอดใหม่ ที่จะเป็นรายการล่าสุด, เงินต้นพลาดตั้งแต่ 2 รอบ และไม่ได้กด "ไว้ทีหลัง" ในรอบนี้
 function principalQuestion(state, rec, editing) {
   if (editing) return null;
   const records = state.records.concat([rec]);
   const r = Calc.compute({ records, yearEnds: state.yearEnds });
-  if (r.latest.date !== rec.date) return null;
-  return r.principalNote;
+  if (r.latest.date !== rec.date || !r.principalNote) return null;
+  const rounds = missedRounds(r.principalNote.sameSince, rec.date);
+  if (rounds < 2) return null;
+  const snooze = state.meta && state.meta.principalSnoozeUntil;
+  if (snooze && rec.date < snooze) return null;
+  return Object.assign({}, r.principalNote, { rounds });
+}
+// กล่องเตือนในฟอร์มบันทึกยอดใหม่ (ไม่เด้ง): ถ้าบันทึกวันที่ dateIso ด้วยเงินต้น pm/pg นี้ เงินต้นจะไม่ทันสมัยไหม
+function principalHint(state, dateIso, pm, pg) {
+  if (pm == null || pg == null || !dateIso) return null;
+  const before = Calc.byDate(state.records).filter(r => r.date < dateIso);
+  if (!before.length) return null;
+  const hypo = { date: dateIso, v: before[before.length - 1].v, pm, pg, note: '' };
+  const r = Calc.compute({ records: state.records.filter(x => x.date !== dateIso).concat([hypo]), yearEnds: state.yearEnds });
+  if (r.latest.date !== dateIso || !r.principalNote) return null;
+  return { sameSince: r.principalNote.sameSince, rounds: missedRounds(r.principalNote.sameSince, dateIso) };
 }
 
 // ---------- ยอดสิ้นปี (F-03, AC-08, AC-10, C-2) ----------
@@ -210,6 +238,6 @@ function latestLedger(state, type, today) {
   return xs.length ? xs[xs.length - 1] : null;
 }
 
-return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, checkYearEnd,
+return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, principalHint, missedRounds, nextPayDay, checkYearEnd,
          parsePct, mixTotal, liveSaving, liveMixPart, checkDeposit, checkPlan, checkSaving, latestLedger };
 });
