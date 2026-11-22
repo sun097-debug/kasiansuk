@@ -1,4 +1,4 @@
-// ทดสอบหน้าจอสมุดบันทึกแบบอัตโนมัติ (0.4.0) — ตัวเลขสมมติทั้งหมด
+// ทดสอบหน้าจอสมุดบันทึกแบบอัตโนมัติ (0.4.0 · ปรับตาม 0.4.1) — ตัวเลขสมมติทั้งหมด
 // รัน: เปิดเซิร์ฟเวอร์ `python3 -m http.server 8765` ที่โฟลเดอร์แอพ แล้ว `node dev/e2e-ledger.js`
 const { chromium, devices } = require('playwright');
 const fs = require('fs'), path = require('path');
@@ -30,7 +30,8 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   // ---------- 2. เมนูบันทึก 5 อย่าง ----------
   await page.goto(URL + '#/record'); await page.waitForSelector('.menu-list');
   const items = await page.$$eval('.menu-item', els => els.map(e => e.innerText.replace(/\s+/g, ' ').trim()));
-  check('F-16 เมนูบันทึก 5 ปุ่ม บันทึกยอดใหม่บนสุด สมุด 3 อย่างติด "ไม่บังคับ"', items.length === 5 && items[0].startsWith('บันทึกยอดใหม่') && items.slice(2).every(t => t.includes('ไม่บังคับ')), JSON.stringify(items));
+  check('F-16 เมนูบันทึก 5 ปุ่ม บันทึกยอดใหม่บนสุด สมุด 3 อย่างติด "ไม่บังคับ" ยอดสิ้นปีท้ายสุด (0.4.1)', items.length === 5 && items[0].startsWith('บันทึกยอดใหม่') && items.slice(1, 4).every(t => t.includes('ไม่บังคับ')) && items[4].startsWith('ยอดสิ้นปี') && items[4].includes('ปีละครั้ง'), JSON.stringify(items));
+  check('หัวหน้า "บันทึก" + บรรทัด "วันนี้จะจดอะไรลงสมุด" (0.4.1)', (await page.innerText('.page-head')).includes('วันนี้จะจดอะไรลงสมุด'));
   check('ไม่มีบรรทัด "เร็ว ๆ นี้" แล้ว', !(await page.innerText('main')).includes('เร็ว ๆ นี้'));
   await shot(page, '01-menu');
 
@@ -54,20 +55,21 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   const opts = await page.$$eval('#f-plan option', os => os.map(o => o.textContent));
   check('รายชื่อแผน 12 + ปิดรับแล้ว + แผนอื่น (พิมพ์เอง)', opts.length === 1 + 12 + 1 + 1 + 1 && opts.includes('แผนสมดุลตามอายุ (สัดส่วนเดิม) · ปิดรับแล้ว') && opts.includes('แผนอื่น (พิมพ์เอง)'));
   check('ยังไม่เลือกแผนผสม → ไม่เห็นช่อง %', !(await page.isVisible('#mix-box')));
+  check('หัวช่องวันที่ใช้คำตาม My GPF "ได้มูลค่าหน่วยลงทุนวันที่" (0.4.1)', (await page.innerText('#lg-form legend')).includes('ได้มูลค่าหน่วยลงทุนวันที่'));
   await sel(page, 1, 10, 2569); await page.selectOption('#f-plan', 'แผนผสมสัดส่วนเอง');
   check('เลือกแผนผสม → เห็น 7 ช่อง %', await page.isVisible('#mix-box') && (await page.$$('#mix-box input')).length === 7);
   await page.fill('#f-mix-1', '30'); await page.fill('#f-mix-5', '20');
   check('รวมไม่ถึง 100 → แสดงผลรวม และปุ่มบันทึกกดไม่ได้', (await page.innerText('#mix-total')).includes('รวมตอนนี้ 50%') && await page.isDisabled('#lg-form button[type=submit]'));
   await page.fill('#f-mix-6', '20.5');
-  check('ใส่ทศนิยม → ช่องกรอบแดง + บอกว่าใส่ได้เฉพาะจำนวนเต็ม', (await page.getAttribute('#f-mix-6', 'aria-invalid')) === 'true' && (await page.innerText('#mix-total')).includes('จำนวนเต็ม'));
+  check('ใส่ทศนิยม → ช่องกรอบแดง + ข้อความใต้ช่องว่าใส่ได้เฉพาะจำนวนเต็ม', (await page.getAttribute('#f-mix-6', 'aria-invalid')) === 'true' && (await page.innerText('#mix-err-6')).includes('จำนวนเต็ม') && (await page.innerText('#mix-total')).includes('กรอบสีแดง'));
   await page.fill('#f-mix-6', '20'); await page.fill('#f-mix-3', '30');
-  check('รวม 100 → "ครบแล้ว" และกดบันทึกได้', (await page.innerText('#mix-total')).includes('100% ครบแล้ว') && !(await page.isDisabled('#lg-form button[type=submit]')));
+  check('ทองคำ 30 (รวม 100) → ขึ้นข้อความที่ช่องทองคำทันทีระหว่างพิมพ์ และปุ่มบันทึกกดไม่ได้ (0.4.1)', (await page.innerText('#mix-err-3')).includes('ไม่เกิน 25%') && await page.isDisabled('#lg-form button[type=submit]'));
+  await shot(page, '03a-plan-gold-over');
+  await page.fill('#f-mix-3', '20'); await page.fill('#f-mix-6', '30');
+  check('ทองคำ 20 รวม 100 → "ครบแล้ว" และกดบันทึกได้', (await page.innerText('#mix-total')).includes('100% ครบแล้ว') && !(await page.isDisabled('#lg-form button[type=submit]')) && !(await page.isVisible('#mix-err-3')));
   await shot(page, '03-plan-mix');
-  await page.click('#lg-form button[type=submit]');
-  check('AC-28 ทองคำ 30 → เตือนแต่มีปุ่มยืนยันบันทึก', await page.isVisible('#confirm-warn') && (await page.innerText('.warn-box')).includes('ไม่เกิน 25%'));
-  check('เตือนแล้วค่าที่กรอกยังอยู่', (await page.inputValue('#f-mix-3')) === '30' && await page.isVisible('#mix-box'));
-  await page.click('#confirm-warn'); await page.waitForSelector('.chips');
-  check('ยืนยันแล้วบันทึก → ไปประวัติกรองเปลี่ยนแผน', (await page.innerText('main')).includes('→ แผนผสมสัดส่วนเอง') && (await page.innerText('main')).includes('ทองคำ 30%'));
+  await page.click('#lg-form button[type=submit]'); await page.waitForSelector('.chips');
+  check('บันทึกแล้ว → ไปประวัติกรองเปลี่ยนแผน', (await page.innerText('main')).includes('→ แผนผสมสัดส่วนเอง') && (await page.innerText('main')).includes('ทองคำ 20%'));
   // แผนอื่น (พิมพ์เอง)
   await page.goto(URL + '#/record/plan'); await page.waitForSelector('#f-plan');
   await sel(page, 1, 3, 2563); await page.selectOption('#f-plan', 'แผนอื่น (พิมพ์เอง)');
@@ -83,10 +85,14 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   check('AC-29 ทศนิยม → บันทึกไม่ได้', (await page.innerText('#lg-form')).includes('จำนวนเต็ม'));
   await page.fill('#f-rate', '-3'); await page.click('#lg-form button[type=submit]');
   check('AC-29 ติดลบ → บันทึกไม่ได้', (await page.innerText('#lg-form')).includes('ติดลบไม่ได้'));
-  await page.fill('#f-rate', '30'); await page.click('#lg-form button[type=submit]');
-  check('AC-29 เกิน 27 → เตือนแต่ยืนยันได้', await page.isVisible('#confirm-warn') && (await page.innerText('.warn-box')).includes('ไม่เกิน 27%'));
-  await page.fill('#f-rate', '5'); await page.click('#lg-form button[type=submit]'); await page.waitForSelector('.chips');
-  check('ออมเพิ่ม 5 → บันทึกได้ (แก้ค่าก่อนยืนยัน ไม่ถูกบันทึก 30)', (await page.innerText('main')).includes('→ 5%') && !(await page.innerText('main')).includes('→ 30%'));
+  await page.fill('#f-rate', ''); await page.type('#f-rate', '30');
+  check('เกิน 27 → ขึ้นข้อความทันทีระหว่างพิมพ์ (ยังไม่กดบันทึก) (0.4.1)', await page.isVisible('#rate-err') && (await page.innerText('#rate-err')).includes('ไม่เกิน 27%'));
+  await page.click('#lg-form button[type=submit]');
+  check('เกิน 27 กดบันทึก → บันทึกไม่ได้ อยู่หน้าเดิม (0.4.1)', await page.isVisible('#f-rate') && (await page.innerText('#lg-form')).includes('ออมเพิ่มได้ไม่เกิน 27%'));
+  await page.fill('#f-rate', ''); await page.type('#f-rate', '5');
+  check('แก้เป็น 5 → ข้อความหายเอง', !(await page.isVisible('#rate-err')));
+  await page.click('#lg-form button[type=submit]'); await page.waitForSelector('.chips');
+  check('ออมเพิ่ม 5 → บันทึกได้ และไม่มี 30 ในสมุด', (await page.innerText('main')).includes('→ 5%') && !(await page.innerText('main')).includes('→ 30%'));
   await shot(page, '04-history-saving');
 
   // ---------- 6. ประวัติรวม + ตัวกรอง (AC-30) ----------
@@ -116,15 +122,17 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   check('ลบแล้วเหลือเงินนำส่ง 1 รายการ', depLeft === 1);
   // แก้แผนผสม: ค่า % เดิมกลับมาครบ
   await page.goto(URL + '#/history?f=plan'); await page.click('.hist-item:has-text("แผนผสม")'); await page.waitForSelector('.kv');
-  check('รายละเอียดแผนผสมแสดงแต่ละแผนและ %', (await page.innerText('.kv')).includes('แผนทองคำ') && (await page.innerText('.kv')).includes('30%'));
+  check('รายละเอียดแผนผสมแสดงแต่ละแผนและ % + ป้ายวันที่ตาม My GPF', (await page.innerText('.kv')).includes('แผนทองคำ') && (await page.innerText('.kv')).includes('20%') && (await page.innerText('.kv')).includes('ได้มูลค่าหน่วยลงทุนวันที่'));
   await page.click('.btn-row a:has-text("แก้")'); await page.waitForSelector('#mix-box');
-  check('แก้แผนผสม: % เดิมเติมไว้ครบ รวม 100', (await page.inputValue('#f-mix-3')) === '30' && (await page.innerText('#mix-total')).includes('100%'));
+  check('แก้แผนผสม: % เดิมเติมไว้ครบ รวม 100', (await page.inputValue('#f-mix-3')) === '20' && (await page.innerText('#mix-total')).includes('100%'));
 
   // ---------- 8. หน้าหลัก: ตัวเลขไม่เปลี่ยน + สรุปสมุด (F-17) ----------
   await page.goto(URL + '#/home'); await page.waitForSelector('.tiles');
   check('หลังจดสมุดทั้ง 3 ประเภท ตัวเลขการ์ดปีนี้เท่าเดิมทุกตัว', (await page.innerText('.tiles')) === yearCard0);
-  const sum = await page.isVisible('.nb-sum') ? await page.innerText('.nb-sum') : '';
-  check('F-17 สรุปสมุด: แผนล่าสุด (ตั้งแต่ 1 ต.ค. 2569) · ออมเพิ่ม 5%', sum.includes('จดไว้') && sum.includes('แผนผสมสัดส่วนเอง') && sum.includes('1 ต.ค. 2569') && sum.includes('ออมเพิ่ม 5%'), sum.replace(/\s+/g, ' '));
+  const sum = await page.isVisible('.card .nb-line') ? await page.innerText('.card .nb-line') : '';
+  check('F-17 สรุปสมุด: บรรทัดเดียวในการ์ดบนสุด "จดไว้ แผนผสมสัดส่วนเอง · ออมเพิ่ม 5%" (0.4.1)', sum.includes('จดไว้') && sum.includes('แผนผสมสัดส่วนเอง') && sum.includes('ออมเพิ่ม 5%') && (await page.$('section.card:first-of-type .nb-line, main > section.card .nb-line')) !== null, sum.replace(/\s+/g, ' '));
+  const firstCard = await page.$eval('main section.card', el => el.innerText);
+  check('บรรทัดสรุปอยู่ในการ์ดแรก "วันนี้ในสมุด"', firstCard.includes('วันนี้ในสมุด') && firstCard.includes('ออมเพิ่ม 5%'));
   const banner = await page.isVisible('.banner');
   check('จดสมุดไม่ทำให้แถบชวนสำรองขึ้น (ซัน 21 พ.ย. — ไม่รบกวน)', !banner);
   await shot(page, '06-home');
@@ -154,6 +162,19 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   }
   await p3.goto(URL + '#/record/plan'); await p3.selectOption('#f-plan', 'แผนผสมสัดส่วนเอง'); await p3.screenshot({ path: SHOTS + '/L08-plan-320.png', fullPage: true });
   await p3.goto(URL + '#/history'); await p3.screenshot({ path: SHOTS + '/L09-history-320.png', fullPage: true });
+
+  // ---------- 11. กล่องแนะนำแบบไอคอน: ไม่พูดถึง Safari กับคนที่ไม่ได้ใช้ Safari (0.4.1) ----------
+  const UA = {
+    safari: devices['iPhone 13'].userAgent,
+    chromeIOS: devices['iPhone 13'].userAgent.replace('Version/', 'CriOS/120.0.0.0 Version/'),
+    android: devices['Pixel 7'].userAgent,
+  };
+  for (const [k, ua] of Object.entries(UA)) {
+    const px = await newPage({ ...devices[k === 'android' ? 'Pixel 7' : 'iPhone 13'], userAgent: ua });
+    await px.goto(URL); await px.waitForSelector('.install');
+    const t = await px.innerText('.install');
+    check(`กล่องแนะนำไอคอน (${k}): ${k === 'safari' ? 'พูดถึง Safari' : 'ไม่มีคำว่า Safari'}`, k === 'safari' ? t.includes('Safari') : !t.includes('Safari'), t.split('\n')[1]);
+  }
 
   check('ไม่มีข้อผิดพลาดในหน้า', errs.length === 0, errs.join(' / '));
   console.log(`\nรวม ผ่าน ${pass} / ไม่ผ่าน ${fail}`);

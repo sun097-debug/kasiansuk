@@ -113,7 +113,8 @@ function checkYearEnd(state, f, { editingYear = null, today }) {
 }
 
 // ---------- สมุดบันทึก: เงินนำส่ง / เปลี่ยนแผน / ออมเพิ่ม (F-13–F-15, Requirements v1.3 หัวข้อ 5.3) ----------
-// หลัก: ผิดตามหลักตัวเลข → บันทึกไม่ได้ (errors) / ผิดตามกฎของ กบข. → เตือนแต่ยืนยันบันทึกได้
+// หลัก: ผิดตามหลักตัวเลข → บันทึกไม่ได้ / ผิดเพดานของ กบข. (ทองคำ 25, ออมเพิ่ม 27) → บันทึกไม่ได้เช่นกัน
+// (0.4.1 ซันตัดสิน 22 พ.ย.: My GPF ไม่ยอมให้เกินอยู่แล้ว ตัวเลขที่เกินจึงเป็นการพิมพ์ผิด — เดิม 0.4.0 เตือนแต่ยืนยันได้)
 // สมุดไม่ใช้คำนวณ — ฟังก์ชันเหล่านี้ไม่แตะยอดเงินหรือยอดสิ้นปี
 // วันละ 1 รายการต่อประเภท (ซันยืนยัน 21 พ.ย. 2569) → วันซ้ำพาไปแก้รายการเดิม (duplicateOf = id)
 const ledgerDup = (state, type, date, editingId) =>
@@ -130,6 +131,19 @@ function parsePct(text, emptyIsZero) {
   const v = Number(s);
   if (v > 100) return { ok: false, why: 'เกิน 100% ไม่ได้' };
   return { ok: true, value: v };
+}
+
+const goldWhy = () => `แผนทองคำเลือกได้ไม่เกิน ${Plans.GOLD_MAX}%`;
+const savingWhy = () => `ออมเพิ่มได้ไม่เกิน ${Plans.SAVING_MAX}%`;
+// ตรวจช่องเดียวระหว่างพิมพ์ (ใช้แสดงข้อความทันที) — คืน null ถ้าไม่มีปัญหา
+function liveSaving(text) {
+  if (String(text || '').trim() === '') return null;
+  const r = parsePct(text, false); if (!r.ok) return r.why;
+  return r.value > Plans.SAVING_MAX ? savingWhy() : null;
+}
+function liveMixPart(i, text) {
+  const r = parsePct(text, true); if (!r.ok) return r.why;
+  return Plans.MIX_PARTS[i] === Plans.GOLD && r.value > Plans.GOLD_MAX ? goldWhy() : null;
 }
 
 // เงินนำส่ง (F-13, AC-27): วันที่เงินเข้า + จำนวน (ยอดรวมช่องเดียว) + บันทึกเพิ่มเติม
@@ -153,7 +167,7 @@ function checkPlan(state, f, { editingId = null, today }) {
   const dt = checkDate(f.d, f.m, f.y, today); if (!dt.ok) errors.date = dt.why;
   const name = String(f.plan || '');
   const known = Plans.CURRENT.concat(Plans.CLOSED, [Plans.OTHER]);
-  let item = null, total = null, goldOver = false;
+  let item = null, total = null;
   if (!name) errors.plan = 'กรุณาเลือกแผน';
   else if (!known.includes(name)) errors.plan = 'ไม่พบแผนนี้ในรายชื่อ เลือกใหม่ หรือเลือก "แผนอื่น (พิมพ์เอง)"';
   else if (name === Plans.OTHER) {
@@ -166,8 +180,8 @@ function checkPlan(state, f, { editingId = null, today }) {
     Plans.MIX_PARTS.forEach((part, i) => {
       const p = parsePct(f['mix-' + i], true);
       if (!p.ok) { errors['mix-' + i] = p.why; partErr = true; return; }
+      if (part === Plans.GOLD && p.value > Plans.GOLD_MAX) { errors['mix-' + i] = goldWhy(); partErr = true; return; }
       total += p.value; if (p.value > 0) mix.push({ plan: part, pct: p.value });
-      if (part === Plans.GOLD && p.value > Plans.GOLD_MAX) goldOver = true;
     });
     if (!partErr && total !== 100) errors.mix = total === 0 ? 'ใส่ % อย่างน้อย 1 แผน ให้รวมได้ 100%' : `ต้องรวมได้ 100% (ตอนนี้ ${total}%)`;
     item = { plan: name, mix };
@@ -175,18 +189,19 @@ function checkPlan(state, f, { editingId = null, today }) {
   if (Object.keys(errors).length) return { errors, total };
   const dup = ledgerDup(state, 'plan', dt.iso, editingId);
   if (dup) return { errors: { date: 'มีการเปลี่ยนแผนวันที่นี้แล้ว' }, duplicateOf: dup.id, total };
-  return { errors: {}, total, goldOver, item: Object.assign({ type: 'plan', date: dt.iso }, item, { note: cleanNote(f.note) }) };
+  return { errors: {}, total, item: Object.assign({ type: 'plan', date: dt.iso }, item, { note: cleanNote(f.note) }) };
 }
 
 // ออมเพิ่ม (F-15, AC-29): อัตรา % ของเงินเดือน เต็มจำนวน; เกิน 27 → เตือนแต่ยืนยันได้
 function checkSaving(state, f, { editingId = null, today }) {
   const errors = {};
   const dt = checkDate(f.d, f.m, f.y, today); if (!dt.ok) errors.date = dt.why;
-  const r = parsePct(f.rate, false); if (!r.ok) errors.rate = r.why;
+  const r = parsePct(f.rate, false);
+  if (!r.ok) errors.rate = r.why; else if (r.value > Plans.SAVING_MAX) errors.rate = savingWhy();
   if (Object.keys(errors).length) return { errors };
   const dup = ledgerDup(state, 'saving', dt.iso, editingId);
   if (dup) return { errors: { date: 'มีการออมเพิ่มวันที่นี้แล้ว' }, duplicateOf: dup.id };
-  return { errors: {}, over: r.value > Plans.SAVING_MAX, item: { type: 'saving', date: dt.iso, rate: r.value, note: cleanNote(f.note) } };
+  return { errors: {}, item: { type: 'saving', date: dt.iso, rate: r.value, note: cleanNote(f.note) } };
 }
 
 // รายการสมุดล่าสุดที่มีผลแล้ว (ไม่เกินวันนี้) ของแต่ละประเภท — ใช้กับ F-17
@@ -196,5 +211,5 @@ function latestLedger(state, type, today) {
 }
 
 return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, checkYearEnd,
-         parsePct, mixTotal, checkDeposit, checkPlan, checkSaving, latestLedger };
+         parsePct, mixTotal, liveSaving, liveMixPart, checkDeposit, checkPlan, checkSaving, latestLedger };
 });

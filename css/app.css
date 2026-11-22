@@ -205,17 +205,17 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 
 /* ---------- สมุดบันทึก 3 หน้า (0.4.0 — UX v1.2 หัวข้อ 5.6) ---------- */
 [hidden] { display: none !important; }
-:root { --paper: #FFFDF6; --paper-dot: #F0EADB; --spine: #B2DCC7; }
+:root { --paper: #FFFDF6; --paper-dot: #E2D6BA; --spine: #B2DCC7; }  /* 0.4.1 ลายจุดเข้มขึ้น (ซันเลือกระดับ A 22 พ.ย.) */
 .card.notebook {
   background-color: var(--paper);
-  background-image: radial-gradient(var(--paper-dot) 1px, transparent 1px);
+  background-image: radial-gradient(var(--paper-dot) 1.5px, transparent 1.5px);
   background-size: 18px 18px;
   border-left: 8px solid var(--spine);
 }
 .nb-note { margin: 0; font-size: 13px; background: var(--mint); color: var(--text-box); border-radius: 12px; padding: 8px 12px; }
 .tag-opt { font-size: 12px; font-weight: 400; color: var(--text-2); background: var(--mint); margin-left: 6px; }
 .tag-jot { color: var(--pink-text); background: var(--pink-bg); align-self: flex-start; }
-.nb-sum { gap: 6px; font-size: 14px; }
+.nb-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--text); text-decoration: none; margin-top: 4px; }
 .pct-in { display: flex; align-items: center; gap: 6px; }
 .pct-in input { max-width: 110px; }
 .mix { display: flex; flex-direction: column; gap: 10px; background: var(--card); border: 1.5px solid var(--mint-border); border-radius: 16px; padding: 12px; }

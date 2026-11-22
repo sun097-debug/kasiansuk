@@ -1,4 +1,4 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.0 (Build ช่วง B: สมุด 3 หน้า + ประวัติรวมทุกประเภท) · ก่อนหน้า 0.3.2, 0.3.1, 0.2.0
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ + สรุปสมุด), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี,
 // จดเงินนำส่ง / จดการเปลี่ยนแผน / จดการออมเพิ่ม (ไม่ใช้คำนวณ), ประวัติ (ทุกประเภท + ตัวกรอง),
 // สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ)
@@ -6,7 +6,7 @@
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
 const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -43,18 +43,21 @@ const IMPORTANT_MORE = ['ตัวเลขทั้งหมดคุณกร�
 // ---------- เพิ่มไปหน้าจอโฮม (0.2.0 — ซันอยากให้ผู้ใช้ใช้แบบไอคอน) ----------
 const isStandalone = () => (window.navigator.standalone === true) || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Safari จริง (ไม่ใช่ Chrome / Firefox / Edge บน iPhone ซึ่งใช้ป้าย CriOS / FxiOS / EdgiOS) — 0.4.1
+const isIOSSafari = () => isIOS() && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
 const INSTALL_KEY = 'kasiansuk.installHidden';
 const installHidden = () => { try { return localStorage.getItem(INSTALL_KEY) === '1'; } catch (e) { return false; } };
 function installCard(dismissible) {
   if (isStandalone()) return '';
   if (dismissible && installHidden()) return '';
+  // 0.4.1: ไม่พูดถึง Safari กับคนที่ไม่ได้ใช้ Safari (ซัน 22 พ.ย. — คนใช้ Android/Chrome จะงง)
   const steps = isIOS()
-    ? `<li>แตะปุ่มแชร์ของ Safari (สี่เหลี่ยมมีลูกศรชี้ขึ้น — ถ้าไม่เห็น แตะ ••• ก่อน)</li><li>เลื่อนหา <b>เพิ่มไปยังหน้าจอโฮม</b> (Add to Home Screen)</li><li>แตะ <b>เพิ่ม</b> แล้วเปิดแอพจากไอคอนเกษียณสุข</li>`
+    ? `<li>แตะปุ่มแชร์${isIOSSafari() ? 'ของ Safari' : ''} (สี่เหลี่ยมมีลูกศรชี้ขึ้น — ถ้าไม่เห็น แตะ ••• ก่อน)</li><li>เลื่อนหา <b>เพิ่มไปยังหน้าจอโฮม</b> (Add to Home Screen)</li><li>แตะ <b>เพิ่ม</b> แล้วเปิดแอพจากไอคอนเกษียณสุข</li>`
     : `<li>แตะเมนูของเบราว์เซอร์ (⋮ มุมขวาบน)</li><li>เลือก <b>เพิ่มไปยังหน้าจอหลัก</b> หรือ <b>ติดตั้งแอพ</b></li><li>เปิดแอพจากไอคอนเกษียณสุข</li>`;
   const hasData = state && (state.records.length || state.yearEnds.length || state.ledger.length);
   return `<section class="install" aria-labelledby="install-h">
     <div class="install-head"><h2 id="install-h">ใช้แบบไอคอนบนหน้าจอโฮม</h2>${dismissible ? '<button type="button" class="icon-btn" id="hide-install" aria-label="ปิดกล่องแนะนำ">✕</button>' : ''}</div>
-    <p>เปิดง่ายเหมือนแอพ และเสี่ยงข้อมูลหายน้อยกว่าเปิดในเบราว์เซอร์ (Safari อาจลบข้อมูลของเว็บที่ไม่ได้เปิดนานเกิน 7 วัน)</p>
+    <p>เปิดง่ายเหมือนแอพ และเสี่ยงข้อมูลหายน้อยกว่าเปิดในเบราว์เซอร์${isIOSSafari() ? ' (Safari อาจลบข้อมูลของเว็บที่ไม่ได้เปิดนานเกิน 7 วัน)' : ''}</p>
     <ol>${steps}</ol>
     ${hasData ? '<p><b>ข้อมูลที่จดในเบราว์เซอร์จะไม่ตามไปที่ไอคอน</b> — สำรองข้อมูลก่อน แล้วกู้คืนในแอพที่เปิดจากไอคอน <a href="#/data">ไปสำรอง</a></p>' : ''}
   </section>`;
@@ -298,6 +301,7 @@ function renderHome() {
       <span class="small muted">ยอดเงิน</span>
       <div class="big-money num">${fmtMoney(L.v)}<span class="unit">บาท</span></div>
       <span class="small muted">ข้อมูลวันที่ ${thaiDate(L.date)}</span>
+      ${ledgerSummaryLine()}
       <div style="margin-top:10px">${change}</div>
     </section>
     ${steps.length ? `<section class="card"><h2 class="card-title">อีก ${steps.length} ขั้นเพื่อดูกำไร${yw}</h2><ul class="checklist">${steps.join('')}</ul></section>` : ''}
@@ -306,7 +310,6 @@ function renderHome() {
       ${yearCard}
     </section>
     ${chartCard(r, Y)}
-    ${ledgerSummaryCard()}
     <p class="footer-note">ไม่ใช่คำแนะนำการลงทุน · ไม่ใช่บริการทางการของ กบข.</p>
   </main>`, 'home');
   bindHelp(); bindInstall();
@@ -319,13 +322,14 @@ function renderHome() {
 }
 
 // สรุปสมุดบนหน้าหลัก (F-17 ควรมี) — แสดงเฉพาะเมื่อเคยจดเปลี่ยนแผนหรือออมเพิ่ม; ใช้รายการล่าสุดที่มีผลแล้ว
-function ledgerSummaryCard() {
+// 0.4.1 (ซัน 22 พ.ย.): บรรทัดเดียวในการ์ดบนสุด "วันนี้ในสมุด" ใต้วันที่ข้อมูล (เดิมเป็นการ์ดแยกท้ายหน้า)
+function ledgerSummaryLine() {
   const t = today(), p = Forms.latestLedger(state, 'plan', t), s = Forms.latestLedger(state, 'saving', t);
   if (!p && !s) return '';
   const parts = [];
-  if (p) parts.push(`แผนล่าสุดที่จด: <b>${esc(p.plan)}</b> (ตั้งแต่ ${thaiDate(p.date)})`);
-  if (s) parts.push(`ออมเพิ่ม <b>${s.rate}%</b>`);
-  return `<section class="card nb-sum"><span class="tag tag-jot">จดไว้</span><p style="margin:0">${parts.join(' · ')}</p></section>`;
+  if (p) parts.push(esc(p.plan));
+  if (s) parts.push(`ออมเพิ่ม ${s.rate}%`);
+  return `<a class="nb-line" href="#/history?f=${p ? 'plan' : 'saving'}"><span class="tag tag-jot">จดไว้</span><span>${parts.join(' · ')}</span></a>`;
 }
 
 // กราฟยอดเงินกับเงินต้น (F-10): 2 เส้น จุดเฉพาะวันที่บันทึกจริง + ยอดสิ้นปี; ช่องว่าง = ผลประโยชน์
@@ -377,15 +381,16 @@ function chartSvg(pts) {
 // =====================================================================
 function renderRecordMenu() {
   const opt = '<span class="tag tag-opt">ไม่บังคับ</span>';
-  view(`${pageHead('บันทึก')}
+  // 0.4.1 (ซัน 22 พ.ย.): ยอดสิ้นปีย้ายไปท้ายสุด เพราะใช้ปีละครั้ง; คงหัว "บันทึก" + บรรทัดเล็กแนวสมุด
+  view(`${pageHead('บันทึก', null, null, 'วันนี้จะจดอะไรลงสมุด')}
   <main><div class="menu-list">
     <a class="menu-item main" href="#/record/balance"><span><span class="t" style="font-size:18px">บันทึกยอดใหม่</span><span class="d">จากหน้ายอดเงิน กบข. ใน My GPF</span></span></a>
-    <a class="menu-item" href="#/record/yearend"><span><span class="t">ยอดสิ้นปี</span><span class="d muted">จาก "ดูยอดเงินย้อนหลังรายปี"</span></span></a>
     <a class="menu-item" href="#/record/deposit"><span><span class="t">เงินนำส่ง ${opt}</span></span></a>
     <a class="menu-item" href="#/record/plan"><span><span class="t">เปลี่ยนแผน ${opt}</span></span></a>
     <a class="menu-item" href="#/record/saving"><span><span class="t">ออมเพิ่ม ${opt}</span></span></a>
   </div>
   <p class="small muted" style="margin:0">เงินนำส่ง เปลี่ยนแผน และออมเพิ่ม จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
+  <div class="menu-list"><a class="menu-item" href="#/record/yearend"><span><span class="t">ยอดสิ้นปี</span><span class="d muted">ปีละครั้ง ช่วงต้นปี · จาก "ดูยอดเงินย้อนหลังรายปี"</span></span></a></div>
   </main>`, 'record');
 }
 
@@ -520,7 +525,6 @@ function ledgerPage(type, editing, body, after = '') {
   <main><section class="card notebook">${body}</section>${after}</main>`, 'record');
   bindHelp();
 }
-const warnConfirm = msg => `<div class="warn-box" role="alert" tabindex="-1"><p>${msg}</p><button type="button" class="btn btn-primary" id="confirm-warn">ยืนยันบันทึก</button></div>`;
 // เก็บรายการสมุด — ไม่นับเข้าแถบชวนสำรอง (ซัน 21 พ.ย.: ไม่อยากรบกวนผู้ใช้ เรื่องนี้รอคุยละเอียด)
 function saveLedger(item, editing, after) {
   const next = clone(state);
@@ -530,15 +534,13 @@ function saveLedger(item, editing, after) {
 }
 function bindLedgerForm(check, rerender, editing, afterNew) {
   const form = app.querySelector('#lg-form');
-  const submit = ok => {
+  const submit = () => {
     draft = readForm(form);
     const r = check(state, draft, { editingId: editing ? editing.id : null, today: today() });
     if (Object.keys(r.errors).length) { rerender(r.errors, { duplicateOf: r.duplicateOf }); focusFirstError(); return; }
-    if ((r.goldOver || r.over) && !ok) { rerender({}, { warn: true }); focusFirstError(); return; }
     saveLedger(r.item, editing, it => (editing ? go(`#/history/l/${it.id}`) : afterNew(it)));
   };
-  form.addEventListener('submit', e => { e.preventDefault(); submit(false); });
-  const c = app.querySelector('#confirm-warn'); if (c) c.addEventListener('click', () => submit(true));
+  form.addEventListener('submit', e => { e.preventDefault(); submit(); });
   return form;
 }
 const editOf = (id, type) => { const x = id ? findLedger(id) : null; return x && x.type === type ? x : null; };
@@ -589,12 +591,12 @@ function renderPlan(editId, errors = {}, extra = {}) {
   const mixRows = Plans.MIX_PARTS.map((pt, i) => `<div class="mix-row">
       <label for="f-mix-${i}">${pt}${pt === Plans.GOLD ? ` <span class="opt">(ไม่เกิน ${Plans.GOLD_MAX})</span>` : ''}</label>
       <span class="pct-in"><input type="text" id="f-mix-${i}" name="mix-${i}" inputmode="numeric" autocomplete="off" value="${esc(dr['mix-' + i] || '')}"${inv('mix-' + i)}><span aria-hidden="true">%</span></span>
-      ${err('mix-' + i)}</div>`).join('');
+      <span class="err" id="mix-err-${i}"${errors['mix-' + i] ? '' : ' hidden'}>${esc(errors['mix-' + i] || '')}</span></div>`).join('');
   ledgerPage('plan', editing, `
     <p class="nb-note">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
     <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
     <form id="lg-form" novalidate>
-      ${dateFields('date', dateIso, errors.date, 'วันที่มีผล', 'วันที่แผนใหม่เริ่มมีผลตาม My GPF')}
+      ${dateFields('date', dateIso, errors.date, 'ได้มูลค่าหน่วยลงทุนวันที่', 'ใช้วันที่ตามที่ My GPF แสดง')}
       ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/plan/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
       <div class="field"><label for="f-plan">แผน</label><select id="f-plan" name="plan"${inv('plan')}>${options}</select>${err('plan')}</div>
       <div class="field" id="other-box"${sel === Plans.OTHER ? '' : ' hidden'}><label for="f-other">ชื่อแผน</label>
@@ -603,7 +605,6 @@ function renderPlan(editId, errors = {}, extra = {}) {
         <span class="hint">ใส่ % เต็มจำนวน ช่องที่เว้นว่าง = 0</span>
         ${mixRows}
         <div class="mix-total" id="mix-total" aria-live="polite"></div>${err('mix')}</fieldset>
-      ${extra.warn ? warnConfirm(`แผนทองคำปกติเลือกได้ไม่เกิน ${Plans.GOLD_MAX}% ตรวจกับ My GPF อีกครั้ง ถ้าถูกแล้วกดยืนยัน`) : ''}
       ${noteField(dr.note)}
       <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'จดลงสมุด'}</button>
     </form>`);
@@ -615,10 +616,14 @@ function renderPlan(editId, errors = {}, extra = {}) {
     form.querySelector('#other-box').hidden = v !== Plans.OTHER;
     if (v !== Plans.MIX) { btn.disabled = false; return; }
     let bad = false;
-    form.querySelectorAll('[name^="mix-"]').forEach(el => { const ok = Forms.parsePct(el.value, true).ok; el.toggleAttribute('aria-invalid', !ok); if (!ok) { el.setAttribute('aria-invalid', 'true'); bad = true; } });
+    form.querySelectorAll('[name^="mix-"]').forEach((el, i) => {
+      const why = Forms.liveMixPart(i, el.value), msg = form.querySelector('#mix-err-' + i);
+      msg.hidden = !why; msg.textContent = why || '';
+      if (why) { el.setAttribute('aria-invalid', 'true'); bad = true; } else el.removeAttribute('aria-invalid');
+    });
     const t = Forms.mixTotal(readForm(form)), ok = !bad && t === 100;
     box.className = 'mix-total' + (ok ? ' ok' : '');
-    box.innerHTML = bad ? 'ใส่ได้เฉพาะจำนวนเต็ม ไม่ติดลบ — แก้ช่องที่มีกรอบสีแดง'
+    box.innerHTML = bad ? 'แก้ช่องที่มีกรอบสีแดงก่อน'
       : ok ? `<span aria-hidden="true">✓</span> รวมตอนนี้ 100% ครบแล้ว` : `รวมตอนนี้ ${t}% — ต้องรวมได้ 100%`;
     btn.disabled = !ok;
   };
@@ -637,16 +642,22 @@ function renderSaving(editId, errors = {}, extra = {}) {
     <p class="nb-note">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>
     <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
     <form id="lg-form" novalidate>
-      ${dateFields('date', dateIso, errors.date, 'วันที่มีผล', null)}
+      ${dateFields('date', dateIso, errors.date, 'วันที่มีผล', 'ใช้วันที่ตามที่ My GPF แสดง')}
       ${extra.duplicateOf ? `<a class="btn btn-soft" href="#/record/saving/${extra.duplicateOf}">ไปแก้รายการเดิม</a>` : ''}
       <div class="field"><label for="f-rate">อัตราออมเพิ่ม (% ของเงินเดือน)</label>
         <span class="pct-in"><input type="text" id="f-rate" name="rate" inputmode="numeric" autocomplete="off" value="${esc(dr.rate)}"${errors.rate ? ' aria-invalid="true"' : ''}><span aria-hidden="true">%</span></span>
-        <span class="hint">เต็มจำนวน ไม่รวมเงินสะสมภาคบังคับ 3%</span>${errors.rate ? `<span class="err">${esc(errors.rate)}</span>` : ''}</div>
-      ${extra.warn ? warnConfirm(`ปกติออมเพิ่มได้ไม่เกิน ${Plans.SAVING_MAX}% ตรวจกับ My GPF อีกครั้ง ถ้าถูกแล้วกดยืนยัน`) : ''}
+        <span class="hint">เต็มจำนวน 0–${Plans.SAVING_MAX} ไม่รวมเงินสะสมภาคบังคับ 3%</span><span class="err" id="rate-err"${errors.rate ? '' : ' hidden'}>${esc(errors.rate || '')}</span></div>
       ${noteField(dr.note)}
       <button type="submit" class="btn btn-primary">${editing ? 'บันทึกการแก้ไข' : 'จดลงสมุด'}</button>
     </form>`);
-  bindLedgerForm(Forms.checkSaving, (e, x) => renderSaving(editId, e, x), editing, () => go('#/history?f=saving'));
+  const form = bindLedgerForm(Forms.checkSaving, (e, x) => renderSaving(editId, e, x), editing, () => go('#/history?f=saving'));
+  // บอกทันทีระหว่างพิมพ์ (0.4.1 — ซันคาดว่าจะเห็นตั้งแต่พิมพ์)
+  const rateEl = form.querySelector('#f-rate'), rateErr = form.querySelector('#rate-err');
+  rateEl.addEventListener('input', () => {
+    const why = Forms.liveSaving(rateEl.value);
+    rateErr.hidden = !why; rateErr.textContent = why || '';
+    if (why) rateEl.setAttribute('aria-invalid', 'true'); else rateEl.removeAttribute('aria-invalid');
+  });
 }
 
 // =====================================================================
@@ -702,7 +713,7 @@ function renderHistory(filter) {
 function renderLedgerDetail(id, askDelete) {
   const x = findLedger(id);
   if (!x) return go('#/history');
-  const kv = [[x.type === 'deposit' ? 'วันที่เงินเข้า' : 'วันที่มีผล', thaiDate(x.date)]];
+  const kv = [[{ deposit: 'วันที่เงินเข้า', plan: 'ได้มูลค่าหน่วยลงทุนวันที่', saving: 'วันที่มีผล' }[x.type], thaiDate(x.date)]];
   if (x.type === 'deposit') kv.push(['จำนวน', fmtMoney(x.a) + ' บาท']);
   if (x.type === 'plan') {
     kv.push(['แผน', esc(x.plan) + (x.other ? ' <span class="opt">(พิมพ์เอง)</span>' : '')]);
