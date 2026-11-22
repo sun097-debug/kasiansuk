@@ -138,5 +138,22 @@ function stateFromBackup(data, nowIso) {
   return st;
 }
 
-return { KEY, SCHEMA, FORMAT, emptyState, checkData, load, save, makeBackup, parseBackup, summarize, stateFromBackup };
+// ---------- ชวนสำรอง (0.4.2 — ซันเลือกแบบ ข. 22 พ.ย. 2569; แทนกติกาเดิม "3 รายการ หรือ 30 วัน") ----------
+// ชวนเมื่อมีการเปลี่ยนแปลงที่ยังไม่ได้สำรอง (นับทุกประเภทรวมสมุด) และ ครบ 90 วัน หรือ ครบ 30 ครั้ง อย่างใดอย่างหนึ่งก่อน
+// ยิ่งมีของที่ยังไม่สำรองมาก ยิ่งชวนเร็ว — คนบันทึกทุกวันถูกชวนราวเดือนละครั้ง คนบันทึกนาน ๆ ทีราว 90 วันครั้ง ไม่มีของใหม่ไม่ชวน
+// ปิดแถบแล้ว นับใหม่จากตอนปิด
+const NUDGE_DAYS = 90, NUDGE_CHANGES = 30;
+const dayOf = iso => { const [y, m, d] = iso.slice(0, 10).split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 864e5); };
+function backupNudge(meta, nowIso) {
+  const m = meta || {};
+  const pending = m.changesSinceBackup || 0;                          // เปลี่ยนแปลงที่ยังไม่ได้สำรอง (แสดงในหน้าสำรองข้อมูล)
+  const sinceNudge = pending - (m.bannerDismissedChanges || 0);       // นับจากตอนปิดแถบครั้งล่าสุด
+  const ref = [m.lastBackupAt || m.createdAt, m.bannerDismissedAt].filter(Boolean).sort().pop();
+  const days = ref ? dayOf(nowIso) - dayOf(ref) : 0;
+  const show = sinceNudge > 0 && (sinceNudge >= NUDGE_CHANGES || days >= NUDGE_DAYS);
+  const sinceBackup = m.lastBackupAt ? dayOf(nowIso) - dayOf(m.lastBackupAt) : null;
+  return { show, pending, sinceBackup };
+}
+
+return { KEY, SCHEMA, FORMAT, NUDGE_DAYS, NUDGE_CHANGES, backupNudge, emptyState, checkData, load, save, makeBackup, parseBackup, summarize, stateFromBackup };
 });

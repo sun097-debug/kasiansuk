@@ -134,7 +134,10 @@ const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok
   const firstCard = await page.$eval('main section.card', el => el.innerText);
   check('บรรทัดสรุปอยู่ในการ์ดแรก "วันนี้ในสมุด"', firstCard.includes('วันนี้ในสมุด') && firstCard.includes('ออมเพิ่ม 5%'));
   const banner = await page.isVisible('.banner');
-  check('จดสมุดไม่ทำให้แถบชวนสำรองขึ้น (ซัน 21 พ.ย. — ไม่รบกวน)', !banner);
+  check('จดหลายรายการในวันเดียว แถบชวนสำรองไม่ขึ้น (กติกา 0.4.2: 90 วัน หรือ 30 ครั้ง)', !banner);
+  await page.goto(URL + '#/data'); await page.waitForSelector('#do-backup');
+  const st = await page.innerText('main');
+  check('หน้าสำรองข้อมูลบอกจำนวนการเปลี่ยนแปลงที่ยังไม่ได้สำรอง (นับสมุดด้วย)', /มีการเปลี่ยนแปลง \d+ ครั้งที่ยังไม่ได้สำรอง/.test(st), (st.match(/สำรองล่าสุด[^\n]*/) || [''])[0]);
   await shot(page, '06-home');
 
   // ---------- 9. สำรอง → กู้คืนในเครื่องอื่น (AC-31) ----------

@@ -1,4 +1,4 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.2 (ลายจุดระดับกลาง) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ + สรุปสมุด), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี,
 // จดเงินนำส่ง / จดการเปลี่ยนแผน / จดการออมเพิ่ม (ไม่ใช้คำนวณ), ประวัติ (ทุกประเภท + ตัวกรอง),
 // สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ)
@@ -19,7 +19,6 @@ let chartRange = 'year';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => todayIso();
 const nowStamp = () => new Date().toISOString();
-const daysBetween = (aIso, bIso) => dayNum(bIso.slice(0, 10)) - dayNum(aIso.slice(0, 10));
 const be = y => y + 543;
 const go = h => { if (location.hash === h) render(); else location.hash = h; };
 
@@ -243,10 +242,7 @@ function renderStart(errors = {}) {
 // =====================================================================
 function backupBannerNeeded() {
   if (!state || !state.records.length) return false;
-  const m = state.meta, now = nowStamp();
-  const sinceChanges = (m.changesSinceBackup || 0) - (m.bannerDismissedChanges || 0);
-  const ref = [m.lastBackupAt || m.createdAt, m.bannerDismissedAt].filter(Boolean).sort().pop();
-  return sinceChanges >= 3 || (ref && daysBetween(ref, now) >= 30);
+  return Store.backupNudge(state.meta, nowStamp()).show;   // กติกา 0.4.2 อยู่ใน store.js
 }
 
 function renderHome() {
@@ -536,9 +532,9 @@ function ledgerPage(type, editing, body, after = '') {
   <main><section class="card notebook">${body}</section>${after}</main>`, 'record');
   bindHelp();
 }
-// เก็บรายการสมุด — ไม่นับเข้าแถบชวนสำรอง (ซัน 21 พ.ย.: ไม่อยากรบกวนผู้ใช้ เรื่องนี้รอคุยละเอียด)
+// เก็บรายการสมุด — 0.4.2: นับเป็นการเปลี่ยนแปลงที่ยังไม่ได้สำรองด้วย (กติกาชวนสำรองใหม่ไม่ชวนถี่ จึงไม่รบกวน)
 function saveLedger(item, editing, after) {
-  const next = clone(state);
+  const next = changed(clone(state));
   const it = Object.assign({ id: editing ? editing.id : newId() }, item);
   next.ledger = editing ? next.ledger.map(x => (x.id === editing.id ? it : x)) : next.ledger.concat([it]);
   if (persist(next, editing ? 'แก้แล้ว' : 'จดลงสมุดแล้ว')) { draft = null; after(it); }
@@ -736,7 +732,7 @@ function renderLedgerDetail(id, askDelete) {
   if (x.note) kv.push(['บันทึกเพิ่มเติม', esc(x.note)]);
   const label = LEDGER_LABEL[x.type];
   detailView(`${label} ${thaiDate(x.date)}`, kv, `#/record/${x.type}/${x.id}`, askDelete, `ลบรายการ${label}วันที่ ${thaiDate(x.date)} ใช่ไหม`, () => {
-    const next = clone(state); next.ledger = next.ledger.filter(y => y.id !== id);
+    const next = changed(clone(state)); next.ledger = next.ledger.filter(y => y.id !== id);
     if (persist(next, 'ลบแล้ว')) go('#/history');
   }, `#/history/l/${x.id}`, '<p class="small muted" style="margin:0">จดไว้ดูย้อนหลัง ไม่ใช้คำนวณกำไร</p>');
 }
@@ -787,6 +783,13 @@ function markBackedUp() {
   const next = clone(state); next.meta.lastBackupAt = nowStamp(); next.meta.changesSinceBackup = 0; next.meta.bannerDismissedChanges = 0;
   persist(next); renderData();
 }
+// บรรทัดสถานะเงียบ ๆ ในหน้าสำรองข้อมูล (0.4.2) — บอกโดยไม่เด้งเตือน
+function backupStatus(m) {
+  const n = Store.backupNudge(m, nowStamp());
+  const when = m.lastBackupAt ? `สำรองล่าสุด ${thaiDate(m.lastBackupAt.slice(0, 10))}${n.sinceBackup > 0 ? ` (${n.sinceBackup} วันก่อน)` : ' (วันนี้)'}` : 'ยังไม่เคยสำรอง';
+  const what = n.pending > 0 ? ` · มีการเปลี่ยนแปลง ${n.pending} ครั้งที่ยังไม่ได้สำรอง` : (m.lastBackupAt ? ' · ข้อมูลทั้งหมดสำรองแล้ว' : '');
+  return when + what;
+}
 function renderData() {
   const has = !!state;
   const m = has ? state.meta : null;
@@ -795,7 +798,7 @@ function renderData() {
     ${loadError ? `<div class="alert" role="alert">อ่านข้อมูลเดิมในเครื่องไม่ได้: ${esc(loadError)} — แอพจะไม่เขียนทับข้อมูลเดิมเอง ถ้ามีไฟล์สำรอง กู้คืนได้ด้านล่าง</div>` : ''}
     ${has ? `<section class="card">
       <h2 class="card-title">สำรองข้อมูล</h2>
-      <p class="small muted" style="margin:0">${m.lastBackupAt ? `สำรองล่าสุด ${thaiDate(m.lastBackupAt.slice(0, 10))}` : 'ยังไม่เคยสำรอง'}</p>
+      <p class="small muted" style="margin:0">${backupStatus(m)}</p>
       <p class="small" style="margin:0">กดแต่ละครั้งได้ไฟล์ใหม่ที่มีข้อมูลครบทุกปี เก็บไว้ในที่ที่ไม่หายเมื่อเปลี่ยนเครื่อง เช่น iCloud Drive หรือ Google Drive</p>
       <button type="button" class="btn btn-primary" id="do-backup">สำรองข้อมูล</button>
     </section>` : ''}

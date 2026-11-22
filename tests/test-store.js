@@ -60,5 +60,17 @@ eq('S05', 'ไฟล์จากรุ่นใหม่กว่า', S.parseBa
 // S07 ไฟล์สำรองไม่มีผลคำนวณ (เก็บแค่สิ่งที่ผู้ใช้กรอก)
 { const f = JSON.parse(S.makeBackup(sample(), 'x')); eq('S07', 'ไฟล์มีแค่ records / yearEnds / ledger', Object.keys(f.data), ['records', 'yearEnds', 'ledger']); }
 
+// S08 กติกาชวนสำรอง 0.4.2 (ซันเลือกแบบ ข. 22 พ.ย.): มีของใหม่ และ (90 วัน หรือ 30 ครั้ง)
+{ const N = (meta, now) => S.backupNudge(meta, now).show;
+  const base = { createdAt: '2026-01-01T00:00:00Z', lastBackupAt: '2026-01-01T00:00:00Z', changesSinceBackup: 0, bannerDismissedAt: null, bannerDismissedChanges: 0 };
+  eq('S08', 'ไม่มีของใหม่ → ไม่ชวน แม้ผ่านไป 200 วัน', N(base, '2026-07-20T00:00:00Z'), false);
+  eq('S08', 'กลุ่ม 1 (นาน ๆ ที): 2 รายการ 89 วัน → ยังไม่ชวน / 90 วัน → ชวน', [N({ ...base, changesSinceBackup: 2 }, '2026-03-31T00:00:00Z'), N({ ...base, changesSinceBackup: 2 }, '2026-04-01T00:00:00Z')], [false, true]);
+  eq('S08', 'กลุ่ม 3 (ทุกวัน): 29 ครั้ง → ยังไม่ชวน / 30 ครั้ง → ชวน (ราวเดือนละครั้ง)', [N({ ...base, changesSinceBackup: 29 }, '2026-01-30T00:00:00Z'), N({ ...base, changesSinceBackup: 30 }, '2026-01-31T00:00:00Z')], [false, true]);
+  eq('S08', 'กติกาเดิม 3 รายการไม่ใช้แล้ว: 3 ครั้งใน 5 วัน → ไม่ชวน', N({ ...base, changesSinceBackup: 3 }, '2026-01-06T00:00:00Z'), false);
+  const dismissed = { ...base, changesSinceBackup: 30, bannerDismissedAt: '2026-02-01T00:00:00Z', bannerDismissedChanges: 30 };
+  eq('S08', 'ปิดแถบแล้ว นับใหม่จากตอนปิด: ไม่มีของใหม่หลังปิด → ไม่ชวน / ของใหม่ 30 ครั้งหลังปิด → ชวน', [N(dismissed, '2026-06-01T00:00:00Z'), N({ ...dismissed, changesSinceBackup: 60 }, '2026-02-20T00:00:00Z')], [false, true]);
+  eq('S08', 'ยังไม่เคยสำรอง: นับวันจากวันเริ่มใช้', [N({ ...base, lastBackupAt: null, changesSinceBackup: 1 }, '2026-03-31T00:00:00Z'), N({ ...base, lastBackupAt: null, changesSinceBackup: 1 }, '2026-04-01T00:00:00Z')], [false, true]);
+  eq('S08', 'บรรทัดสถานะ: จำนวนที่ยังไม่ได้สำรอง + กี่วันก่อน', (({ pending, sinceBackup }) => [pending, sinceBackup])(S.backupNudge({ ...base, changesSinceBackup: 12 }, '2026-02-15T00:00:00Z')), [12, 45]); }
+
 console.log(rows.join('\n')); console.log(`\nรวม ผ่าน ${pass} / ไม่ผ่าน ${fail}`);
 if (fail) process.exitCode = 1;
