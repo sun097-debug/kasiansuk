@@ -1,4 +1,4 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่ + ภาพหัวหน้าหลักตามฤดู + ต้นอ่อนข้างหัวกราฟ) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ + สรุปสมุด), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี,
 // จดเงินนำส่ง / จดการเปลี่ยนแผน / จดการออมเพิ่ม (ไม่ใช้คำนวณ), ประวัติ (ทุกประเภท + ตัวกรอง),
 // สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ)
@@ -32,7 +32,34 @@ const LOGO = (w = 42, h = 44, label = true) => `<svg width="${w}" height="${h}" 
   <circle cx="24" cy="18" r="6" fill="#FFC9AE"></circle><ellipse cx="22" cy="31" rx="7" ry="3.5" fill="#8FCFB1" transform="rotate(-20 22 31)"></ellipse></svg>`;
 // พระอาทิตย์ + เมฆฟ้า 2 ก้อน (แทนใบไม้ — ซันยืนยัน 20 พ.ย. 2569)
 const cloud = (x, y, k, c) => `<g transform="translate(${x} ${y}) scale(${k})" fill="${c}"><circle cx="10" cy="10" r="8"></circle><circle cx="20" cy="7" r="10"></circle><circle cx="30" cy="11" r="7"></circle><rect x="4" y="10" width="30" height="8" rx="4"></rect></g>`;
-const SUN = `<svg class="art" width="78" height="56" viewBox="0 0 78 56" aria-hidden="true"><circle cx="46" cy="22" r="17" fill="#FFD9C4"></circle>${cloud(2, 30, 0.95, '#CFE6F5')}${cloud(42, 36, 0.7, '#BFDDF2')}</svg>`;
+// ---------- ภาพหัวหน้าหลักตามฤดูของไทย (0.4.2 — ซันเสนอ 22 พ.ย.: ลูกเล่นให้ผู้ใช้รู้สึกสนุก มีความสุข) ----------
+// ช่วงฤดูโดยประมาณตามสถิติทางการ: ร้อน กลาง ก.พ.–กลาง พ.ค. / ฝน กลาง พ.ค.–กลาง ต.ค. / หนาว กลาง ต.ค.–กลาง ก.พ.
+// วันจริงที่กรมอุตุฯ ประกาศขยับทุกปี — เป็นภาพตกแต่งเท่านั้น ดูจากวันที่ในเครื่อง ไม่ต่อเน็ต ไม่แตะข้อมูล
+// ดูฤดูอื่นเพื่อทดสอบ: เปิดที่อยู่ ?season=hot / rain / snow / mist
+const WINTER = 'snow';   // หน้าหนาว: 'snow' (หิมะ) หรือ 'mist' (หมอกเย็น) — รอซันเลือก
+function seasonOf(iso) {
+  const md = +iso.slice(5, 7) * 100 + +iso.slice(8, 10);
+  return md >= 216 && md < 516 ? 'hot' : md >= 516 && md < 1016 ? 'rain' : WINTER;
+}
+function season() {
+  try { const q = new URLSearchParams(location.search).get('season'); if (['hot', 'rain', 'snow', 'mist'].includes(q)) return q; } catch (e) { /* ไม่เป็นไร */ }
+  return seasonOf(todayIso());
+}
+const rays = (cx, cy, r, c) => Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4, f = n => n.toFixed(1);
+  return `<line x1="${f(cx + Math.cos(a) * (r + 3))}" y1="${f(cy + Math.sin(a) * (r + 3))}" x2="${f(cx + Math.cos(a) * (r + 7))}" y2="${f(cy + Math.sin(a) * (r + 7))}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"></line>`; }).join('');
+const ART = {
+  // หน้าร้อน: แดดจ้า มีรัศมี + เมฆเล็ก
+  hot: `${rays(44, 22, 14, '#FFC9AE')}<circle cx="44" cy="22" r="14" fill="#FFC9AE"></circle>${cloud(0, 34, 0.75, '#CFE6F5')}`,
+  // หน้าฝน: เมฆฝน + เม็ดฝน + พระอาทิตย์แง้ม (ไม่ให้ดูหม่น)
+  rain: `<circle cx="54" cy="14" r="10" fill="#FFD9C4"></circle>${cloud(6, 8, 1.4, '#C6D9EA')}${[[16, 38], [27, 44], [38, 38], [49, 44], [22, 51], [43, 51]].map(([x, y]) => `<line x1="${x}" y1="${y}" x2="${x - 2}" y2="${y + 5}" stroke="#8FBFE3" stroke-width="2" stroke-linecap="round"></line>`).join('')}`,
+  // หน้าหนาว ก: พระอาทิตย์อ่อน + เกล็ดหิมะ + เมฆ
+  snow: `<circle cx="46" cy="22" r="15" fill="#FFE3D3"></circle>${cloud(2, 32, 0.8, '#D6E7F3')}${[[10, 12], [24, 6], [70, 10], [66, 40], [36, 50], [74, 52]].map(([x, y]) => `<g stroke="#AFCBE8" stroke-width="1.6" stroke-linecap="round"><line x1="${x - 3}" y1="${y}" x2="${x + 3}" y2="${y}"></line><line x1="${x}" y1="${y - 3}" x2="${x}" y2="${y + 3}"></line><line x1="${x - 2}" y1="${y - 2}" x2="${x + 2}" y2="${y + 2}"></line><line x1="${x - 2}" y1="${y + 2}" x2="${x + 2}" y2="${y - 2}"></line></g>`).join('')}`,
+  // หน้าหนาว ข: พระอาทิตย์อ่อน + หมอกเช้า
+  mist: `<circle cx="46" cy="20" r="15" fill="#FFE3D3"></circle><g stroke="#D3E1EA" stroke-width="3.5" stroke-linecap="round"><line x1="8" y1="38" x2="52" y2="38"></line><line x1="22" y1="46" x2="72" y2="46"></line><line x1="6" y1="53" x2="40" y2="53"></line></g>`,
+};
+const SUN_ART = () => `<svg class="art" width="78" height="56" viewBox="0 0 78 56" aria-hidden="true" data-season="${season()}">${ART[season()]}</svg>`;
+// ต้นอ่อนข้างหัวกราฟ "เงินที่ค่อย ๆ โต" (0.4.2 — ซันอยากลองดู)
+const SPROUT = `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" class="sprout"><path d="M9 17 V9" stroke="#62B48C" stroke-width="2" stroke-linecap="round"></path><path d="M9 10 C9 5 5 3 2 4 C2 8 5 10 9 10z" fill="#8FCFB1"></path><path d="M9 9 C9 4 13 2 16 3 C16 7 13 9 9 9z" fill="#76BF9C"></path></svg>`;
 const BACK_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>';
 
 const IMPORTANT_3 = ['ไม่ใช่คำแนะนำการลงทุน', 'ไม่ใช่บริการทางการของ กบข.', 'ข้อมูลอยู่ในเครื่องคุณเท่านั้น ไม่ส่งออกไปที่ใด'];
@@ -201,7 +228,7 @@ function view(html, tab) {
 // =====================================================================
 function renderStart(errors = {}) {
   const dr = draft || {};
-  view(`<header class="app-head"><div class="brand">${LOGO(50, 52)}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
+  view(`<header class="app-head"><div class="brand">${LOGO(50, 52)}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN_ART()}</header>
   <main>
     ${installCard(false)}
     <section class="card">
@@ -299,7 +326,7 @@ function renderHome() {
       ${r.principalSince ? `<span class="xsmall muted">เงินต้นอัปเดตล่าสุด ${thaiDate(r.principalSince)}</span>` : ''}`;
   }
 
-  view(`<header class="app-head"><div class="brand">${LOGO(50, 52)}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN}</header>
+  view(`<header class="app-head"><div class="brand">${LOGO(50, 52)}<div><span class="brand-name">เกษียณสุข</span><span class="brand-sub">สมุดบันทึกเงิน กบข. ของคุณ</span></div></div>${SUN_ART()}</header>
   <main>
     ${installCard(true)}
     ${backupBannerNeeded() ? `<div class="banner" role="note"><p>สำรองข้อมูลไว้กันหาย <a href="#/data">ไปสำรอง</a></p><button type="button" class="icon-btn" id="hide-banner" aria-label="ปิดแถบชวนสำรอง">✕</button></div>` : ''}
@@ -353,7 +380,7 @@ function chartCard(r, Y) {
     ? `<p class="small muted" style="margin:0">ช่วงนี้ยังมีจุดไม่ถึง 2 จุด ลองดู "ทั้งหมด"</p>`
     : chartSvg(pts);
   return `<section class="card chart">
-    <div class="row" style="align-items:center"><h2 class="card-title" style="font-size:16px">เงินที่ค่อย ๆ โต</h2>${toggle}</div>
+    <div class="row" style="align-items:center"><h2 class="card-title chart-title" style="font-size:16px">${SPROUT}เงินที่ค่อย ๆ โต</h2>${toggle}</div>
     ${body}
     <div class="legend"><span><span style="width:18px;height:3px;background:#2E7D63;border-radius:2px"></span>ยอดเงิน</span>
       <span><span style="width:18px;height:0;border-top:3px dashed #E39A78"></span>เงินต้น</span></div>

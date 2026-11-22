@@ -234,3 +234,8 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--er
 .chips a { text-decoration: none; color: var(--text-2); background: var(--card); border: 1.5px solid var(--mint-border); border-radius: 999px; padding: 6px 12px; font-size: 13px; min-height: 36px; display: inline-flex; align-items: center; }
 .chips a[aria-current="true"] { background: var(--mint); color: var(--text); font-weight: 600; border-color: var(--primary); }
 .hist-type.lg { background: var(--pink-bg); color: var(--pink-text); }
+
+/* ต้นอ่อนข้างหัวกราฟ (0.4.2) */
+.chart-title { display: inline-flex; align-items: center; gap: 6px; }
+.chart svg.sprout, .sprout { flex: none; width: 18px; height: 18px; }
+.chart-title { white-space: nowrap; }
