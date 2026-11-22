@@ -78,5 +78,15 @@ eq('F02', 'พ.ศ. → ค.ศ.', F.checkDate('29', '2', '2567', TODAY).iso, '2
 { const r = F.checkYearEnd({ records: [], yearEnds: [] }, form({ d: '30', m: '11', y: '2568', v: '1', pm: '0', pg: '0' }), { today: TODAY });
   eq('F05', 'วันที่ไม่ใช่ ธ.ค. → เตือนแต่บันทึกได้', [r.ye != null, r.notDecember], [true, true]); }
 
+// F07 วันที่เติมไว้ให้ของยอดเงิน = 2 วันก่อน (0.4.4 — ซันตัดสิน 22 พ.ย., AC-03)
+const at = (y, m, d) => new Date(y, m - 1, d, 10, 0, 0);
+eq('F07', 'วันปกติ / ข้ามต้นเดือน / ข้ามต้นปี / ปีอธิกสุรทิน',
+   [F.defaultDataDate(at(2026, 11, 22)), F.defaultDataDate(at(2026, 12, 1)), F.defaultDataDate(at(2027, 1, 1)), F.defaultDataDate(at(2028, 3, 1))],
+   ['2026-11-20', '2026-11-29', '2026-12-30', '2028-02-28']);
+eq('F07', 'ใกล้เที่ยงคืน (23:59 และ 00:01) ใช้วันที่ตามเวลาในเครื่อง',
+   [F.defaultDataDate(new Date(2026, 10, 22, 23, 59)), F.defaultDataDate(new Date(2026, 10, 23, 0, 1))], ['2026-11-20', '2026-11-21']);
+eq('F07', 'วันที่ที่เติมไว้ผ่านกติกาวันที่ (ไม่ใช่วันในอนาคต)',
+   (() => { const iso = F.defaultDataDate(at(2026, 11, 20)), [y, m, d] = iso.split('-'); return F.checkDate(String(+d), String(+m), String(+y + 543), TODAY).ok; })(), true);
+
 console.log(rows.join('\n')); console.log(`\nรวม ผ่าน ${pass} / ไม่ผ่าน ${fail}`);
 if (fail) process.exitCode = 1;

@@ -15,6 +15,10 @@ const thaiDate = iso => { const [y, m, d] = iso.split('-').map(Number); return `
 // '2026-10-15' → '15 ต.ค. 69' (สั้น สำหรับกราฟ)
 const thaiDateShort = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS[m - 1]} ${String(y + 543).slice(2)}`; };
 const todayIso = (now = new Date()) => `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+// 0.4.4 (AC-03): วันที่ที่เติมไว้ในหน้าเริ่มใช้และฟอร์มบันทึกยอดใหม่ = 2 วันก่อนวันนี้
+// เพราะ "ยอดเงิน ณ วันที่" ใน My GPF มักย้อนหลังราว 2 วัน (ซันบอก 22 พ.ย.) — ไม่คิดข้ามวันหยุด ผู้ใช้แก้เองได้
+const DATA_LAG_DAYS = 2;
+const defaultDataDate = (now = new Date()) => todayIso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - DATA_LAG_DAYS));
 
 // ข้อความเงิน → สตางค์จำนวนเต็ม (ไม่ใช้ทศนิยมคอมพิวเตอร์)
 function parseMoney(text) {
@@ -238,6 +242,6 @@ function latestLedger(state, type, today) {
   return xs.length ? xs[xs.length - 1] : null;
 }
 
-return { MONTHS, thaiDate, thaiDateShort, todayIso, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, principalHint, missedRounds, nextPayDay, checkYearEnd,
+return { MONTHS, thaiDate, thaiDateShort, todayIso, defaultDataDate, DATA_LAG_DAYS, parseMoney, moneyInput, groupDigits, checkDate, checkBalance, principalQuestion, principalHint, missedRounds, nextPayDay, checkYearEnd,
          parsePct, mixTotal, liveSaving, liveMixPart, checkDeposit, checkPlan, checkSaving, latestLedger };
 });

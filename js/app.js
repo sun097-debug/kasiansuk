@@ -1,12 +1,12 @@
-// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.3 (คำถามเงินต้นไม่รีบถาม) · 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่ + ภาพตามฤดู + ต้นอ่อน) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
+// หน้าจอของแอพเกษียณสุข — รุ่น 0.4.4 (วันที่ยอดเงินเติมไว้ 2 วันก่อน) · 0.4.3 (คำถามเงินต้นไม่รีบถาม) · 0.4.2 (ลายจุดระดับกลาง + กติกาชวนสำรองใหม่ + ภาพตามฤดู + ต้นอ่อน) · 0.4.1 (แก้ตามที่ซันลอง 0.4.0 รอบ 4) · ก่อนหน้า 0.4.0 (สมุด 3 หน้า), 0.3.2, 0.3.1, 0.2.0
 // หน้าที่มีในรุ่นนี้: เริ่มใช้, หน้าหลัก (+ กราฟ + สรุปสมุด), เมนูบันทึก, บันทึกยอด/แก้, ยอดสิ้นปี,
 // จดเงินนำส่ง / จดการเปลี่ยนแผน / จดการออมเพิ่ม (ไม่ใช้คำนวณ), ประวัติ (ทุกประเภท + ตัวกรอง),
 // สำรองข้อมูล (สำรอง / กู้คืน / ข้อความสำคัญ)
 (function () {
 'use strict';
 const { BOX, compute, fmtMoney, fmtSigned, fmtPct, P, byDate, dayNum } = Calc;
-const { thaiDate, thaiDateShort, todayIso, moneyInput, groupDigits, MONTHS } = Forms;
-const VERSION = '0.4.3';
+const { thaiDate, thaiDateShort, todayIso, defaultDataDate, moneyInput, groupDigits, MONTHS } = Forms;
+const VERSION = '0.4.4';
 const app = document.getElementById('app');
 
 let state = null;          // ข้อมูลทั้งหมดในเครื่อง (null = ยังไม่เคยใช้)
@@ -18,6 +18,7 @@ let chartRange = 'year';
 // ---------- เครื่องมือเล็ก ๆ ----------
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => todayIso();
+const dataDate = () => defaultDataDate();   // 0.4.4: วันที่เติมไว้ให้ของยอดเงิน = 2 วันก่อน
 const nowStamp = () => new Date().toISOString();
 const be = y => y + 543;
 const go = h => { if (location.hash === h) render(); else location.hash = h; };
@@ -243,7 +244,7 @@ function renderStart(errors = {}) {
       <button type="button" class="link-btn" data-help="balance">ดูได้จากไหนใน My GPF</button>
       <div id="form-alert" class="alert" role="alert" tabindex="-1" hidden></div>
       <form id="start-form" novalidate>
-        ${dateFields('date', isoFromDraft(dr) || today(), errors.date, 'วันที่ข้อมูลจาก กบข.', 'ใช้วันที่ตรง "ยอดเงิน ณ วันที่" ไม่ใช่วันที่กรอก')}
+        ${dateFields('date', isoFromDraft(dr) || dataDate(), errors.date, 'วันที่ข้อมูลจาก กบข.', 'ใช้วันที่ตรง "ยอดเงิน ณ วันที่" ไม่ใช่วันที่กรอก')}
         ${moneyField('v', 'ยอดเงิน (บาท)', dr.v || '', errors.v, 'ตัวเลข "รวมเงินทั้งสิ้น"')}
         ${moneyField('pm', `${BOX.pm} · เงินต้น`, dr.pm || '', errors.pm, 'กรอกเฉพาะบรรทัดเงินต้น ไม่ใช่ผลประโยชน์', 'ข้ามได้')}
         ${moneyField('pg', `${BOX.pg} · เงินต้น`, dr.pg || '', errors.pg, null, 'ข้ามได้')}
@@ -446,7 +447,7 @@ function renderBalance(editDate, errors = {}, extra = {}) {
       if (last) prefillFrom = last.date;
     }
   } else prefillFrom = dr._prefill || null;
-  const dateIso = isoFromDraft(dr) || (editing ? editing.date : today());
+  const dateIso = isoFromDraft(dr) || (editing ? editing.date : dataDate());
   const title = editing ? `แก้ยอดวันที่ ${thaiDate(editing.date)}` : 'บันทึกยอดใหม่';
   const back = editing ? `#/history/b/${editing.date}` : '#/record';
   view(`${pageHead(title, back, editing ? 'รายละเอียด' : 'บันทึก')}
